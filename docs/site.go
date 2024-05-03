@@ -750,49 +750,18 @@ func (site *Site) publishTariffs(greenShareHome float64, greenShareLoadpoints fl
 	}
 }
 
-// Update all Loadpoints
 func (site *Site) update(lp updater) {
 	site.log.DEBUG.Println("----")
 
 	// update all loadpoint's charge power
 	var totalChargePower float64
-	var sitePower float64
-	var smartCostActive bool
-	var batteryBuffered bool
-	var batteryStart bool
-	var GreenShareLoadpoints float64
-	var wg sync.WaitGroup
-	var count_active_Loadpoints int
-	// get Data from all Loadpoints
-	count_active_Loadpoints = 0;
 	for _, lp := range site.loadpoints {
-		wg.Add(1)
-		go updateLoadpointData(lp, &wg, &totalChargePower, &count_active_Loadpoints)
-	}
-	// Wait for all Threads to end
-	wg.Wait()
+		lp.UpdateChargePower()
+		totalChargePower += lp.GetChargePower()
 
-	// Calculate new Data for Loadpointsupdate
-	sitePower,smartCostActive,batteryBuffered,batteryStart,GreenShareLoadpoints := calculateValues(&totalChargePower)
-
-	// Update all Loadpoints with new Data
-	for _, lp := range site.loadpoints {
-		wg.Add(1)
-		go updateLoadpoints(lp, &wg,sitePower,smartCostActive,batteryBuffered,batteryStart,greenShareLoadpoints)
-	}
-	// Wait for all Threads to end
-	wg.Wait()
-
-	if site.batteryDischargeControl {
-		site.updateBatteryMode()
+		site.prioritizer.UpdateChargePowerFlexibility(lp)
 	}
 
-	site.stats.Update(site)
-}
-
-//TODO Kommentierung integrieren
-// Calculate new Values from recieved Data
-func (site *Site) calculateValues(totalChargePower *float64)(float64,bool,bool,bool,float64){
 	// prioritize if possible
 	var flexiblePower float64
 	if lp.GetMode() == api.ModePV {
@@ -816,43 +785,24 @@ func (site *Site) calculateValues(totalChargePower *float64)(float64,bool,bool,b
 		greenShareHome := site.greenShare(0, homePower)
 		greenShareLoadpoints := site.greenShare(nonChargePower, nonChargePower+totalChargePower)
 
+		lp.Update(sitePower, smartCostActive, batteryBuffered, batteryStart, greenShareLoadpoints, site.effectivePrice(greenShareLoadpoints), site.effectiveCo2(greenShareLoadpoints))
+
 		site.Health.Update()
 
 		site.publishTariffs(greenShareHome, greenShareLoadpoints)
 
-		
+		if telemetry.Enabled() && totalChargePower > standbyPower {
+			go telemetry.UpdateChargeProgress(site.log, totalChargePower, greenShareLoadpoints)
+		}
 	} else {
 		site.log.ERROR.Println(err)
 	}
-	if telemetry.Enabled() && totalChargePower > standbyPower {
-		go telemetry.UpdateChargeProgress(site.log, totalChargePower, greenShareLoadpoints)
-	}
-	return sitePower,smartCostActive,batteryBuffered,batteryStart,GreenShareLoadpoints
-}
 
-// Function to Update one charger as a Thread
-func (site *Site) updateLoadpoints(lp updater, wg *sync.WaitGroup ,sitePower float64, smartCostActive, batteryBuffered, batteryStart bool, greenShareLoadpoints float64){
-	// Update Loadpoint
-	lp.Update(sitePower, smartCostActive, batteryBuffered, batteryStart, greenShareLoadpoints, site.effectivePrice(greenShareLoadpoints), site.effectiveCo2(greenShareLoadpoints))
-	// Return the end of the Thread
-	defer wg.Done()
-	return
-}
-
-// Get Data from Loadpoints
-func (site *Site) updateLoadpointData(lp updater, wg *sync.WaitGroup, totalChargePower *float64, active_Loadpoints *int){
-	// update the Charge Power of the Loadpoint
-	lp.UpdateChargePower()
-	// Add Charge Power of the Loadpoint to totalchargePower
-	chargePowerLP := lp.GetChargePower()
-	if chargePowerLP > 0{
-		active_Loadpoints += 1
+	if site.batteryDischargeControl {
+		site.updateBatteryMode()
 	}
-	totalChargePower += chargePowerLP
-	// Update flexibel Power
-	site.prioritizer.UpdateChargePowerFlexibility(lp)
-	defer wg.Done()
-	return
+
+	site.stats.Update(site)
 }
 
 // prepare publishes initial values
