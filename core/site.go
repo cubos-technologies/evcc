@@ -815,9 +815,12 @@ func (site *Site) calculateValues(totalChargePower float64) (float64, bool, bool
 	var err error
 	var greenShareLoadpoints float64
 	flexiblePower = 0
-	if lp.GetMode() == api.ModePV {
-		flexiblePower = site.prioritizer.GetChargePowerFlexibility(lp)
+	for _, lp := range site.loadpoints {
+		if lp.GetMode() == api.ModePV {
+			flexiblePower = site.prioritizer.GetChargePowerFlexibility(lp)
+		}
 	}
+
 	// update all circuits' power and currents
 	if site.circuit != nil {
 		if err := site.circuit.Update(site.loadpointsAsCircuitDevices()); err != nil {
