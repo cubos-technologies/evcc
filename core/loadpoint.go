@@ -1343,6 +1343,10 @@ func (lp *Loadpoint) UpdateChargePowerAndCurrents() {
 	}, bo); err != nil {
 		lp.log.ERROR.Printf("charge currents: %v", err)
 	}
+
+	// read and publish meters first- charge power and currents have already been updated by the site
+	lp.updateChargeVoltages()
+	lp.phasesFromChargeCurrents()
 }
 
 // phasesFromChargeCurrents uses PhaseCurrents interface to count phases with current >=1A
@@ -1572,10 +1576,6 @@ func (lp *Loadpoint) phaseSwitchCompleted() bool {
 func (lp *Loadpoint) Update(sitePower float64, autoCharge, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64) {
 	lp.publish(keys.SmartCostActive, autoCharge)
 	lp.processTasks()
-
-	// read and publish meters first- charge power and currents have already been updated by the site
-	lp.updateChargeVoltages()
-	lp.phasesFromChargeCurrents()
 
 	lp.sessionEnergy.SetEnvironment(greenShare, effPrice, effCo2)
 
