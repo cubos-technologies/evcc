@@ -801,6 +801,15 @@ func (site *Site) update(lp updater) {
 		site.updateBatteryMode()
 	}
 
+	// update all circuits' power and currents
+	if site.circuit != nil {
+		if err := site.circuit.Update(site.loadpointsAsCircuitDevices()); err != nil {
+			site.log.ERROR.Println(err)
+		}
+
+		site.publishCircuits()
+	}
+
 	site.stats.Update(site)
 }
 

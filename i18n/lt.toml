@@ -74,6 +74,16 @@ template = "Gamintojas"
 titleChoice = "Ką norite pridėti?"
 validateSave = "Patikrinti ir išsaugoti"
 
+[config.options]
+
+[config.options.endianness]
+big = "mažėjantys baitai"
+little = "didėjantys baitai"
+
+[config.options.schema]
+http = "HTTP (nešifruotas)"
+https = "HTTPS (užšifruotas)"
+
 [config.pv]
 titleAdd = "Pridėti saulės skaitiklį"
 titleEdit = "Redaguoti saulės skaitiklį"
@@ -393,7 +403,7 @@ detectionActive = "Bandome atpažinti automobilį ..."
 fallbackName = "Automobilis"
 moreActions = "Daugiau veiksmų"
 none = "Nėra automobilio"
-notReachable = "Automobilis buvo nepasiekiamas. Pabandykite restartuoti evcc."
+notReachable = "Automobilis nepasiekiamas. Pabandykite restartuoti evcc."
 targetSoc = "Limitas"
 temp = "t."
 tempLimit = "Temp. limitas"
@@ -499,6 +509,11 @@ filter = "Filtruoti"
 
 [settings]
 title = "Vartotojo sąsaja"
+
+[settings.fullscreen]
+enter = "Įjungti visą ekraną"
+exit = "Išjungti visą ekraną"
+label = "Visas ekranas"
 
 [settings.gridDetails]
 co2 = "CO₂"
