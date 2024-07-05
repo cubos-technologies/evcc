@@ -6,9 +6,9 @@ log: debug
 interval: 3s
 
 # mqtt message broker
-mqtt:
-   broker: localhost:1883
-   topic: evcc # root topic for publishing, set empty to disable
+#mqtt:
+   #broker: localhost:1883
+   #topic: evcc # root topic for publishing, set empty to disable
    # user:
    # password:
 
@@ -23,7 +23,8 @@ javascript:
         gridpower: -1000,
         loadpoints: [
           { enabled: true, vehicleSoc: 62, maxcurrent: 6, phases: 1, chargepower: 0 },
-          { enabled: false, vehicleSoc: 22, maxcurrent: 0, phases: 3, chargepower: 0 }
+          { enabled: false, vehicleSoc: 22, maxcurrent: 0, phases: 3, chargepower: 0 },
+          { enabled: true, vehicleSoc: 30, maxcurrent: 6, phases: 1, chargepower: 0 }
         ]
       };
       function logState() {
@@ -93,8 +94,38 @@ meters:
       source: js
       vm: shared
       script: state.loadpoints[1].chargepower;
+  
+  - name: meter_charger_3
+    type: custom
+    power:
+      source: js
+      vm: shared
+      script: state.loadpoints[2].chargepower;
 
 chargers:
+  # - name: my_chargerM
+  #   type: template
+  #   template: dadapower
+    
+  #   # Modbus TCP
+  #   modbus: tcpip
+  #   id: 1
+  #   host: localhost # Hostname
+  #   port: 502 # Port 
+  # - name: my_chargerS
+  #   type: template
+  #   template: dadapower
+    
+  #   # Modbus TCP
+  #   modbus: tcpip
+  #   id: 2
+  #   host: localhost # Hostname
+  #   port: 502 # Port 
+  # - name: my_charger_Bender
+  #   type: template
+  #   template: bender
+  #   host: localhost # IP-Adresse oder Hostname
+  #   port: 502 # Port (optional) 
   - name: charger_1
     type: custom
     enable:
@@ -158,6 +189,42 @@ chargers:
       script: |
         logState();
         var lp = state.loadpoints[1];
+        lp.maxcurrent = maxcurrent;
+        if (lp.enabled) lp.chargepower = lp.maxcurrent * 230 * lp.phases; else lp.chargepower = 0;
+    tos: true
+    phases1p3p:
+      source: js
+      vm: shared
+      script: |
+        logState();
+        if (phases === 1) lp.phases = 1; else lp.phases = 3;
+        lp.phases;
+  - name: charger_3
+    type: custom
+    enable:
+      source: js
+      vm: shared
+      script: |
+        logState();
+        var lp = state.loadpoints[2];
+        lp.enabled = enable;
+        if (lp.enabled) lp.chargepower = lp.maxcurrent * 230 * lp.phases; else lp.chargepower = 0;
+    enabled:
+      source: js
+      vm: shared
+      script: |
+        state.loadpoints[2].enabled;
+    status:
+      source: js
+      vm: shared
+      script: |
+        if (state.loadpoints[2].enabled) "C"; else "B";
+    maxcurrent:
+      source: js
+      vm: shared
+      script: |
+        logState();
+        var lp = state.loadpoints[2];
         lp.maxcurrent = maxcurrent;
         if (lp.enabled) lp.chargepower = lp.maxcurrent * 230 * lp.phases; else lp.chargepower = 0;
     tos: true
@@ -250,6 +317,11 @@ loadpoints:
     mode: "off"
     meter: meter_charger_2
     vehicle: vehicle_2
+  - title: Hall
+    charger: charger_3
+    mode: "off"
+    meter: meter_charger_3
+    vehicle: vehicle_3
 
 tariffs:
   currency: EUR # three letter ISO-4217 currency code (default EUR)

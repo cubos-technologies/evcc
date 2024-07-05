@@ -760,7 +760,7 @@ func (site *Site) publishTariffs(greenShareHome float64, greenShareLoadpoints fl
 }
 
 // Update all Loadpoints
-func (site *Site) update(lp updater) {
+func (site *Site) update() {
 	site.log.DEBUG.Println("----")
 
 	// update all loadpoint's charge power
@@ -816,16 +816,18 @@ func (site *Site) update(lp updater) {
 // Calculate new Values from recieved Data
 func (site *Site) calculateValues(totalChargePower float64) (float64, bool, bool, float64) {
 	// prioritize if possible
-	var flexiblePower float64
+	//var flexiblePower map[loadpoint.API]float64
+	var flexiblePower_all float64
 	var sitePower float64
 	var batteryBuffered bool
 	var batteryStart bool
 	var err error
 	var greenShareLoadpoints float64
-	flexiblePower = 0
+	flexiblePower_all = 0
 	for _, lp := range site.loadpoints {
 		if lp.GetMode() == api.ModePV {
-			flexiblePower = site.prioritizer.GetChargePowerFlexibility(lp)
+			//flexiblePower[lp] = site.prioritizer.GetChargePowerFlexibility(lp)
+			flexiblePower_all += site.prioritizer.GetChargePowerFlexibility(lp)
 		}
 	}
 
@@ -837,7 +839,7 @@ func (site *Site) calculateValues(totalChargePower float64) (float64, bool, bool
 
 		site.publishCircuits()
 	}
-	if sitePower, batteryBuffered, batteryStart, err = site.sitePower(totalChargePower, flexiblePower); err == nil {
+	if sitePower, batteryBuffered, batteryStart, err = site.sitePower(totalChargePower, flexiblePower_all); err == nil {
 		// ignore negative pvPower values as that means it is not an energy source but consumption
 		homePower := site.gridPower + max(0, site.pvPower) + site.batteryPower - totalChargePower
 		homePower = max(homePower, 0)
@@ -985,14 +987,14 @@ func (site *Site) Run(stopC chan struct{}, interval time.Duration) {
 
 	ticker := time.NewTicker(interval)
 	site.publish(keys.Interval, interval.Seconds())
-	site.update(<-loadpointChan) // start immediately
+	site.update() // start immediately
 
 	for {
 		select {
 		case <-ticker.C:
-			site.update(<-loadpointChan)
-		case lp := <-site.lpUpdateChan:
-			site.update(lp)
+			site.update()
+		case <-site.lpUpdateChan:
+			site.update()
 		case <-stopC:
 			return
 		}
