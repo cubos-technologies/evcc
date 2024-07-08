@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/evcc-io/evcc/api"
@@ -260,6 +261,31 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 	return nil
 }
 
+type EnergyMeterData struct {
+	Title     string  `json:"-"`
+	Energy    float64 `json:"energy"`
+	Power     float64 `json:"power"`
+	Timestamp int64   `json:"timestamp"`
+}
+
+type SafeMap struct {
+	m sync.Map
+}
+
+func (s *SafeMap) Load(key string) (EnergyMeterData, bool) {
+	value, ok := s.m.Load(key)
+	if ok {
+		return value.(EnergyMeterData), true
+	}
+	return EnergyMeterData{}, false
+}
+
+func (s *SafeMap) Store(key string, value EnergyMeterData) {
+	s.m.Store(key, value)
+}
+
+var energymeters = &SafeMap{}
+
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 	// number of loadpoints
@@ -284,7 +310,29 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 		switch {
 		case p.Loadpoint != nil:
 			id := *p.Loadpoint + 1
-			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
+
+			energymeter, _ := (energymeters.Load(strconv.Itoa(id)))
+
+			switch p.Key {
+			case "title":
+				s, ok := p.Val.(string)
+				if ok {
+					energymeter.Title = s
+				}
+			case "chargedEnergy":
+				energymeter.Energy = p.Val.(float64)
+			case "chargePower":
+				energymeter.Power = p.Val.(float64)
+			}
+			energymeter.Timestamp = time.Now().Unix()
+			energymeters.Store(strconv.Itoa(id), energymeter)
+			newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energymeter.Title)
+			payload, err := json.Marshal(energymeter)
+			if err == nil {
+				m.publishString(newTopic, true, string(payload[:]))
+			}
+
+			topic = fmt.Sprintf("%s/chargepoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
 		default:
