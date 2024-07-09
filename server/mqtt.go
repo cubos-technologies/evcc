@@ -348,14 +348,14 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			case "chargePower":
 				chargepointData.Power = p.Val.(float64)
 			case "chargeCurrents":
-				chargepointData.IL1 = p.Val.([]float64)[0]
-				chargepointData.IL2 = p.Val.([]float64)[1]
-				chargepointData.IL3 = p.Val.([]float64)[2]
+				chargepointData.IL1 = p.Val.([]float64)[0] * 1000
+				chargepointData.IL2 = p.Val.([]float64)[1] * 1000
+				chargepointData.IL3 = p.Val.([]float64)[2] * 1000
 			case "chargeVoltages":
 				chargepointData.UL1 = p.Val.([]float64)[0] * 1000
 				chargepointData.UL2 = p.Val.([]float64)[1] * 1000
 				chargepointData.UL3 = p.Val.([]float64)[2] * 1000
-			case "hemsCurrent":
+			case "chargeCurrent":
 				chargepointData.HemsCurrent = p.Val.(float64)
 			default:
 				continue
