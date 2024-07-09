@@ -289,6 +289,8 @@ type ChargepointData struct {
 	ActiveRfid  string  `json:"active_rfid_tag"`
 	HemsCurrent float64 `json:"hems_current"`
 	Timestamp   int64   `json:"timestamp"`
+	Charging    bool    `json:"-"`
+	NotCharging int     `json:"-"`
 }
 
 type SafeMap struct {
@@ -357,17 +359,29 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				chargepointData.UL3 = p.Val.([]float64)[2] * 1000
 			case "chargeCurrent":
 				chargepointData.HemsCurrent = p.Val.(float64)
+			case "vehicleIdentity":
+				chargepointData.ActiveRfid = p.Val.(string)
+			case "charging":
+				chargepointData.Charging = p.Val.(bool)
 			default:
 				continue
 			}
 			chargepointData.Timestamp = time.Now().Unix()
-			chargepoints.Store(strconv.Itoa(id), chargepointData)
+
 			newTopic := fmt.Sprintf("%s/chargepoint/%s/record", m.root, chargepointData.Title)
 			payload, err := json.Marshal(chargepointData)
 			if err == nil && chargepointData.Title != "" {
-				m.publishString(newTopic, true, string(payload[:]))
+				if chargepointData.Charging {
+					chargepointData.NotCharging = 0
+				} else if !chargepointData.Charging && chargepointData.NotCharging <= 5 {
+					chargepointData.NotCharging++
+				}
+				if chargepointData.NotCharging <= 5 {
+					m.publishString(newTopic, true, string(payload[:]))
+				}
 			}
 
+			chargepoints.Store(strconv.Itoa(id), chargepointData)
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
