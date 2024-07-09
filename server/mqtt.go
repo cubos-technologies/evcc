@@ -263,28 +263,48 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 
 type EnergyMeterData struct {
 	Title     string  `json:"-"`
-	Energy    float64 `json:"energy"`
-	Power     float64 `json:"power"`
+	Energy    float64 `json:"E"`
+	EnergyP   float64 `json:"EPos"`
+	EnergyN   float64 `json:"ENeg"`
+	Power     float64 `json:"P"`
+	IL1       float64 `json:"IL1"`
+	IL2       float64 `json:"IL2"`
+	IL3       float64 `json:"IL3"`
+	UL1       float64 `json:"UL1"`
+	UL2       float64 `json:"UL2"`
+	UL3       float64 `json:"UL3"`
 	Timestamp int64   `json:"timestamp"`
+}
+
+type ChargepointData struct {
+	Title       string  `json:"-"`
+	Energy      float64 `json:"E"`
+	Power       float64 `json:"P"`
+	IL1         float64 `json:"IL1"`
+	IL2         float64 `json:"IL2"`
+	IL3         float64 `json:"IL3"`
+	UL1         float64 `json:"UL1"`
+	UL2         float64 `json:"UL2"`
+	UL3         float64 `json:"UL3"`
+	ActiveRfid  string  `json:"active_rfid_tag"`
+	HemsCurrent float64 `json:"hems_current"`
+	Timestamp   int64   `json:"timestamp"`
 }
 
 type SafeMap struct {
 	m sync.Map
 }
 
-func (s *SafeMap) Load(key string) (EnergyMeterData, bool) {
-	value, ok := s.m.Load(key)
-	if ok {
-		return value.(EnergyMeterData), true
-	}
-	return EnergyMeterData{}, false
+func (s *SafeMap) Load(key string) (interface{}, bool) {
+	return s.m.Load(key)
 }
 
-func (s *SafeMap) Store(key string, value EnergyMeterData) {
+func (s *SafeMap) Store(key string, value interface{}) {
 	s.m.Store(key, value)
 }
 
-var energymeters = &SafeMap{}
+// var energymeters = &SafeMap{}
+var chargepoints = &SafeMap{}
 
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
@@ -311,28 +331,44 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 		case p.Loadpoint != nil:
 			id := *p.Loadpoint + 1
 
-			energymeter, _ := (energymeters.Load(strconv.Itoa(id)))
+			chargepoint, _ := (chargepoints.Load(strconv.Itoa(id)))
+			var chargepointData ChargepointData
+			if chargepoint != nil {
+				chargepointData = chargepoint.(ChargepointData)
+			}
 
 			switch p.Key {
 			case "title":
 				s, ok := p.Val.(string)
 				if ok {
-					energymeter.Title = s
+					chargepointData.Title = s
 				}
 			case "chargedEnergy":
-				energymeter.Energy = p.Val.(float64)
+				chargepointData.Energy = p.Val.(float64)
 			case "chargePower":
-				energymeter.Power = p.Val.(float64)
+				chargepointData.Power = p.Val.(float64)
+			case "chargeCurrents":
+				chargepointData.IL1 = p.Val.([]float64)[0]
+				chargepointData.IL2 = p.Val.([]float64)[1]
+				chargepointData.IL3 = p.Val.([]float64)[2]
+			case "chargeVoltages":
+				chargepointData.UL1 = p.Val.([]float64)[0] * 1000
+				chargepointData.UL2 = p.Val.([]float64)[1] * 1000
+				chargepointData.UL3 = p.Val.([]float64)[2] * 1000
+			case "hemsCurrent":
+				chargepointData.HemsCurrent = p.Val.(float64)
+			default:
+				continue
 			}
-			energymeter.Timestamp = time.Now().Unix()
-			energymeters.Store(strconv.Itoa(id), energymeter)
-			newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energymeter.Title)
-			payload, err := json.Marshal(energymeter)
-			if err == nil {
+			chargepointData.Timestamp = time.Now().Unix()
+			chargepoints.Store(strconv.Itoa(id), chargepointData)
+			newTopic := fmt.Sprintf("%s/chargepoint/%s/record", m.root, chargepointData.Title)
+			payload, err := json.Marshal(chargepointData)
+			if err == nil && chargepointData.Title != "" {
 				m.publishString(newTopic, true, string(payload[:]))
 			}
 
-			topic = fmt.Sprintf("%s/chargepoints/%d/%s", m.root, id, p.Key)
+			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
 		default:
