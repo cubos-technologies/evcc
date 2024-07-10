@@ -36,9 +36,10 @@ func (v *Vehicle) Available() error {
 		return errors.New("vehicle is not active")
 	}
 
-	if v.ConnectedDriver.Role == "" {
-		return errors.New("vehicle is not connected to driver")
-	}
+	// DEPRECATED
+	// if v.ConnectedDriver.Role == "" {
+	// 	return errors.New("vehicle is not connected to driver")
+	// }
 
 	return nil
 }
@@ -62,7 +63,7 @@ type attributes struct {
 	RemainingTime      *int    `json:"chargingRemainingTime"`
 	// hvac-status
 	ExternalTemperature float64 `json:"externalTemperature"`
-	HvacStatus          int     `json:"hvacStatus"`
+	HvacStatus          string  `json:"hvacStatus"`
 	// cockpit
 	TotalMileage *float64 `json:"totalMileage"`
 	// position
