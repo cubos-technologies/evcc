@@ -1,0 +1,105 @@
+network:
+  port: 7070
+
+log: debug
+
+interval: 3s
+
+meters:
+  - name: Chargingpark
+    type: template
+    template: tq-em420
+    usage: log
+    host: 192.168.200.162
+    port: 80
+    device: local
+    token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJFVkNDLVRlc3QiLCJjcmUiOjE3MjA0MjQ0ODEsImV4cCI6MjUzNDAyMjE0NDAwLCJpc3MiOiJUUVMiLCJqdGkiOiI0YjNlMjQ5YS1iYjZlLTRlYjktOTg2Yi0xN2RlMzk1MGE1NzciLCJub25jIjoxNDI3MTMxODQ3LCJyb2xlIjoiYXBpIiwic3ViIjoiRU1PUyJ9.I912pJdWCSmFe4S7OSD7mRYwmAgGFI1nL07pZFKGDrw5nfkTifjituBrbcSCFYWWyZ68pEY_CaFLZzzZnqTT7w7XRP0WXU_PC6GpqqucHCu4AdjWP7HgPhDZaA_E3sZ07brQgcEQBVYccll66W2snl9wSh_gIs7zdLAZzUDkIiokOksGe6dnru1SMssvADeEhm2jIhxRByVqK6TBg98ujyl_E7g2UWzTkqyOWnHqx5zYVWMvQslDs4jOzMjQxtjns36z8mX_JIAY-5fmAxiUyHUV9fvaxIMFN3uvVaXkzfHj33iPkL4L2CWbTyUoWvSn6YXUrYHj4eJQF8GdpD-SCA
+  
+  - name: NSHV
+    type: template
+    template: tq-em420
+    usage: grid
+    host: 192.168.200.163
+    port: 80
+    device: local
+    token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJFVkNDLVRvbSIsImNyZSI6MTcyMDQyNTk1MywiZXhwIjoyNTM0MDIyMTQ0MDAsImlzcyI6IlRRUyIsImp0aSI6IjZmZjkyNDExLTRlOWUtNDM2NC1iMzAyLWUwNTE2OGUwN2U2ZCIsIm5vbmMiOjkzOTk4NDA1OSwicm9sZSI6ImFwaSIsInN1YiI6IkVNT1MifQ.IpX1jYB3x4zmYUHibX6GYClOq79MRoVMntpsmkyUriKYA15KuqCp5-bwVxBgkeCbBhykI1NmR7xoRXHxqr-mvmL17VJtA0MNSmDcmzh-a2KI94o1digHGUlp-qY5nmaoXQtcA5ntF7ru1e8lqXvF2-8jX3IfhgPfVBQuCJrfd7B7xFv0KO0qBWeVSda8Fomy6GnumpO9puYgJVOxsEWeJjxj0MEuPjnpjKcejBRpUBNOwlkhWae4p7u8MsRBhiX1DBHTG-5jiw_Y8DySWrj6lUglqmfz7i9U82UvtRCbI7c6S0RoejgwFZndfu32tIPoTVoNx5yGybWk7GiWMS0oHQ
+  
+  - name: Solar
+    type: template
+    template: tq-em420
+    usage: pv
+    host: 192.168.200.172
+    port: 80
+    device: local
+    token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJFVkNDLVRvbSIsImNyZSI6MTcyMDQyNjIyMSwiZXhwIjoyNTM0MDIyMTQ0MDAsImlzcyI6IlRRUyIsImp0aSI6ImJlNzNjYWQxLTg1MzctNDViOS1hYTMwLWM3Y2NmZjJlNjJmMiIsIm5vbmMiOjE0MjcxMzE4NDcsInJvbGUiOiJhcGkiLCJzdWIiOiJFTU9TIn0.TJ4segp_QHbCKK0SOzCLk5Sm962WJIPiQ0YzDQH4YLefxeSXZPF-h8_Uz0XESUcvXsBdEdavAnzq2mKK7Ikpsm_VN5ayugceBbey-6wZr-CYDH5_6XyMAl4t0cShpAA0cR7vHsL6nVXf5SEBbZlnWNyJYl71ZydXwTUPCFg5-BXEK4YYbkcUQQPqPDbusR2OgskFQo1lpM9ucFRIiOcL47TPbowS91e0k19qqREwozRNfi_s_db16zmqyoCOmM8YJgn7Kqq6cCSnUO_0Fa132hu-lT0shpx80cW4s3p57d7UeUeRFjS5p3Eig5OoNbrGiingKUPA_-I_1WJqTnFQ-w
+  
+  - name: Batterie
+    type: template
+    template: sma-si-modbus
+    usage: battery
+  
+    # Modbus TCP
+    modbus: tcpip
+    id: 3
+    host: 192.168.200.191 # Hostname
+    port: 502 # Port 
+
+chargers:
+  - name: LP130
+    type: template
+    template: bender
+    host: 192.168.200.130 # IP-Adresse oder Hostname
+    port: 502 # Port (optional) 
+
+  - name: LP131
+    type: template
+    template: bender
+    host: 192.168.200.131 # IP-Adresse oder Hostname
+    port: 502 # Port (optional) 
+
+  - name: LP132
+    type: template
+    template: bender
+    host: 192.168.200.132 # IP-Adresse oder Hostname
+    port: 502 # Port (optional) 
+
+  - name: LP133
+    type: template
+    template: bender
+    host: 192.168.200.133 # IP-Adresse oder Hostname
+    port: 502 # Port (optional) 
+
+site:
+  title: Zuhause
+  meters:
+    grid: NSHV
+    pv: Solar
+    battery: Batterie
+    log: 
+      - Chargingpark
+
+loadpoints:
+  - title: LP130
+    charger: LP130
+    mode: "pv"
+  - title: LP131
+    charger: LP131
+    mode: "pv"
+  - title: LP132
+    charger: LP132
+    mode: "pv"
+  - title: LP133
+    charger: LP133
+    mode: "pv"
+
+tariffs:
+  currency: EUR # three letter ISO-4217 currency code (default EUR)
+  grid:
+    type: fixed
+    price: 0.399 # EUR/kWh
+  feedin:
+    type: fixed
+    price: 0.08 # EUR/kWh
+  co2:
+    type: grünstromindex
+    zip: 12349
