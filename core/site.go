@@ -45,6 +45,8 @@ type meterMeasurement struct {
 	Energy float64 `json:"energy,omitempty"`
 }
 
+type MeterMeasurement = meterMeasurement
+
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
 	Power        float64 `json:"power"`

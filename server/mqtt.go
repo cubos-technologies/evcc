@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/evcc-io/evcc/api"
+	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/core/vehicle"
@@ -264,8 +265,6 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 type EnergyMeterData struct {
 	Title     string  `json:"-"`
 	Energy    float64 `json:"E"`
-	EnergyP   float64 `json:"EPos"`
-	EnergyN   float64 `json:"ENeg"`
 	Power     float64 `json:"P"`
 	IL1       float64 `json:"IL1"`
 	IL2       float64 `json:"IL2"`
@@ -364,7 +363,8 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			case "charging":
 				chargepointData.Charging = p.Val.(bool)
 			default:
-				continue
+				topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
+				goto skipto
 			}
 			chargepointData.Timestamp = time.Now().Unix()
 
@@ -377,17 +377,42 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 					chargepointData.NotCharging++
 				}
 				if chargepointData.NotCharging <= 5 {
-					m.publishString(newTopic, true, string(payload[:]))
+					m.publishString(newTopic, false, string(payload[:]))
 				}
 			}
-
 			chargepoints.Store(strconv.Itoa(id), chargepointData)
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
+			if p.Key == "pv" {
+				if meters, ok := p.Val.([]core.MeterMeasurement); ok {
+					for id, meter := range meters {
+						var energyMeterData EnergyMeterData
+						energyMeterData.Power = meter.Power
+						energyMeterData.Energy = meter.Energy
+						// Not supported yet
+						energyMeterData.IL1 = 0
+						energyMeterData.IL2 = 0
+						energyMeterData.IL3 = 0
+						energyMeterData.UL1 = -1
+						energyMeterData.UL2 = -1
+						energyMeterData.UL3 = -1
+
+						// Create Title from type and index for now, use that as id
+						energyMeterData.Title = fmt.Sprintf("%s-%d", p.Key, id)
+						energyMeterData.Timestamp = time.Now().Unix()
+						newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energyMeterData.Title)
+						payload, err := json.Marshal(energyMeterData)
+						if err == nil {
+							m.publishString(newTopic, false, string(payload[:]))
+						}
+					}
+				}
+			}
 		}
+	skipto:
 
 		// alive indicator
 		if time.Since(updated) > time.Second {
