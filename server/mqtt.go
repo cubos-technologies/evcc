@@ -386,7 +386,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/vehicles", m.root)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
-			if p.Key == "pv" {
+			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
 				if meters, ok := p.Val.([]core.MeterMeasurement); ok {
 					for id, meter := range meters {
 						var energyMeterData EnergyMeterData
