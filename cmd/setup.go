@@ -22,6 +22,7 @@ import (
 	"github.com/evcc-io/evcc/cmd/shutdown"
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/hems"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/provider/golang"
@@ -45,6 +46,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/libp2p/zeroconf/v2"
+	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -486,6 +488,17 @@ func configureEnvironment(cmd *cobra.Command, conf *globalconfig.All) (err error
 		request.LogHeaders = true
 	}
 
+	// setup persistence
+	if err == nil {
+		err = wrapErrorWithClass(ClassDatabase, configureDatabase(conf.Database))
+	}
+
+	// setup translations
+	if err == nil {
+		// TODO decide wrapping
+		err = locale.Init()
+	}
+
 	// setup machine id
 	if conf.Plant != "" {
 		// TODO decide wrapping
@@ -495,17 +508,6 @@ func configureEnvironment(cmd *cobra.Command, conf *globalconfig.All) (err error
 	// setup sponsorship (allow env override)
 	if err == nil {
 		err = wrapErrorWithClass(ClassSponsorship, configureSponsorship(conf.SponsorToken))
-	}
-
-	// setup translations
-	if err == nil {
-		// TODO decide wrapping
-		err = locale.Init()
-	}
-
-	// setup persistence
-	if err == nil && conf.Database.Dsn != "" {
-		err = wrapErrorWithClass(ClassDatabase, configureDatabase(conf.Database))
 	}
 
 	// setup mqtt client listener
@@ -539,6 +541,10 @@ func configureEnvironment(cmd *cobra.Command, conf *globalconfig.All) (err error
 
 // configureDatabase configures session database
 func configureDatabase(conf globalconfig.DB) error {
+	if conf.Dsn == "" {
+		return errors.New("database dsn not configured")
+	}
+
 	if err := db.NewInstance(conf.Type, conf.Dsn); err != nil {
 		return err
 	}
@@ -897,8 +903,7 @@ func configureSiteAndLoadpoints(conf *globalconfig.All) (*core.Site, error) {
 		return nil, err
 	}
 
-	loadpoints, err := configureLoadpoints(*conf)
-	if err != nil {
+	if err := configureLoadpoints(*conf); err != nil {
 		return nil, fmt.Errorf("failed configuring loadpoints: %w", err)
 	}
 
@@ -906,6 +911,11 @@ func configureSiteAndLoadpoints(conf *globalconfig.All) (*core.Site, error) {
 	if err != nil {
 		return nil, &ClassError{ClassTariff, err}
 	}
+
+	loadpoints := lo.Map(config.Loadpoints().Devices(), func(dev config.Device[loadpoint.API], _ int) *core.Loadpoint {
+		lp := dev.Instance()
+		return lp.(*core.Loadpoint)
+	})
 
 	site, err := configureSite(conf.Site, loadpoints, tariffs)
 	if err != nil {
@@ -968,26 +978,57 @@ func configureSite(conf map[string]interface{}, loadpoints []*core.Loadpoint, ta
 	return site, nil
 }
 
-func configureLoadpoints(conf globalconfig.All) ([]*core.Loadpoint, error) {
-	if len(conf.Loadpoints) == 0 {
-		return nil, errors.New("missing loadpoints")
-	}
+func configureLoadpoints(conf globalconfig.All) error {
+	for id, cc := range conf.Loadpoints {
+		cc.Name = "lp-" + strconv.Itoa(id+1)
 
-	var loadpoints []*core.Loadpoint
-
-	for id, cfg := range conf.Loadpoints {
-		log := util.NewLoggerWithLoadpoint("lp-"+strconv.Itoa(id+1), id+1)
+		log := util.NewLoggerWithLoadpoint(cc.Name, id+1)
 		settings := &core.Settings{Key: "lp" + strconv.Itoa(id+1) + "."}
 
-		lp, err := core.NewLoadpointFromConfig(log, settings, cfg)
+		instance, err := core.NewLoadpointFromConfig(log, settings, cc.Other)
 		if err != nil {
-			return nil, fmt.Errorf("failed configuring loadpoint: %w", err)
+			return fmt.Errorf("failed configuring loadpoint: %w", err)
 		}
 
-		loadpoints = append(loadpoints, lp)
+		if err := config.Loadpoints().Add(config.NewStaticDevice(cc, loadpoint.API(instance))); err != nil {
+			return &DeviceError{cc.Name, err}
+		}
 	}
 
-	return loadpoints, nil
+	// append devices from database
+	configurable, err := config.ConfigurationsByClass(templates.Loadpoint)
+	if err != nil {
+		return err
+	}
+
+	for _, conf := range configurable {
+		cc := conf.Named()
+
+		id := len(config.Loadpoints().Devices())
+		name := "lp-" + strconv.Itoa(id+1)
+
+		log := util.NewLoggerWithLoadpoint(name, id+1)
+		settings := &core.Settings{Key: "lp" + cc.Name + "."}
+
+		// TODO: proper handling of id/name
+		delete(cc.Other, "id")
+		delete(cc.Other, "name")
+
+		instance, err := core.NewLoadpointFromConfig(log, settings, cc.Other)
+		if err != nil {
+			return fmt.Errorf("failed configuring loadpoint: %w", err)
+		}
+
+		if err := config.Loadpoints().Add(config.NewConfigurableDevice(conf, loadpoint.API(instance))); err != nil {
+			return err
+		}
+	}
+
+	if len(config.Loadpoints().Devices()) == 0 {
+		return errors.New("missing loadpoints")
+	}
+
+	return nil
 }
 
 // configureAuth handles routing for devices. For now only api.AuthProvider related routes
