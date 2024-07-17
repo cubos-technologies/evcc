@@ -292,6 +292,10 @@ type ChargepointData struct {
 	NotCharging int     `json:"-"`
 }
 
+type ChargepointError struct {
+	Error string `json:"error"`
+}
+
 type SafeMap struct {
 	m sync.Map
 }
@@ -362,8 +366,17 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				chargepointData.ActiveRfid = p.Val.(string)
 			case "charging":
 				chargepointData.Charging = p.Val.(bool)
+			case "error":
+				var error ChargepointError
+				error.Error = fmt.Sprint(p.Val)
+				var errorJson, _ = json.Marshal(error)
+				// TODO: retain error?
+				m.publishString(fmt.Sprintf("%s/chargepoint/%s/error", m.root, chargepointData.Title), true, string(errorJson[:]))
+				// Skip to publishing the original MQTT topics, can be removed later
+				goto skipto
 			default:
 				topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
+				// Skip to publishing the original MQTT topics, can be removed later
 				goto skipto
 			}
 			chargepointData.Timestamp = time.Now().Unix()
