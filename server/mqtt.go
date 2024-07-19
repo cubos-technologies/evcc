@@ -263,33 +263,48 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 }
 
 type EnergyMeterData struct {
-	Title     string  `json:"-"`
-	Energy    float64 `json:"E"`
-	Power     float64 `json:"P"`
-	IL1       float64 `json:"IL1"`
-	IL2       float64 `json:"IL2"`
-	IL3       float64 `json:"IL3"`
-	UL1       float64 `json:"UL1"`
-	UL2       float64 `json:"UL2"`
-	UL3       float64 `json:"UL3"`
-	Timestamp int64   `json:"timestamp"`
+	Title     string `json:"-"`
+	Energy    int    `json:"E"`
+	Power     int    `json:"P"`
+	IL1       int    `json:"IL1"`
+	IL2       int    `json:"IL2"`
+	IL3       int    `json:"IL3"`
+	UL1       int    `json:"UL1"`
+	UL2       int    `json:"UL2"`
+	UL3       int    `json:"UL3"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type BatteryMeterData struct {
+	Title     string `json:"-"`
+	Energy    int    `json:"E"`
+	Power     int    `json:"P"`
+	IL1       int    `json:"IL1"`
+	IL2       int    `json:"IL2"`
+	IL3       int    `json:"IL3"`
+	UL1       int    `json:"UL1"`
+	UL2       int    `json:"UL2"`
+	UL3       int    `json:"UL3"`
+	SOC       int    `json:"SOC"`
+	Capacity  int    `json:"C"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type ChargepointData struct {
-	Title       string  `json:"-"`
-	Energy      float64 `json:"E"`
-	Power       float64 `json:"P"`
-	IL1         float64 `json:"IL1"`
-	IL2         float64 `json:"IL2"`
-	IL3         float64 `json:"IL3"`
-	UL1         float64 `json:"UL1"`
-	UL2         float64 `json:"UL2"`
-	UL3         float64 `json:"UL3"`
-	ActiveRfid  string  `json:"active_rfid_tag"`
-	HemsCurrent float64 `json:"hems_current"`
-	Timestamp   int64   `json:"timestamp"`
-	Charging    bool    `json:"-"`
-	NotCharging int     `json:"-"`
+	Title       string `json:"-"`
+	Energy      int    `json:"E"`
+	Power       int    `json:"P"`
+	IL1         int    `json:"IL1"`
+	IL2         int    `json:"IL2"`
+	IL3         int    `json:"IL3"`
+	UL1         int    `json:"UL1"`
+	UL2         int    `json:"UL2"`
+	UL3         int    `json:"UL3"`
+	ActiveRfid  string `json:"active_rfid_tag"`
+	HemsCurrent int    `json:"hems_current"`
+	Timestamp   int64  `json:"timestamp"`
+	Charging    bool   `json:"-"`
+	NotCharging int    `json:"-"`
 }
 
 type ChargepointError struct {
@@ -349,19 +364,19 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 					chargepointData.Title = s
 				}
 			case "chargedEnergy":
-				chargepointData.Energy = p.Val.(float64)
+				chargepointData.Energy = int(p.Val.(float64))
 			case "chargePower":
-				chargepointData.Power = p.Val.(float64)
+				chargepointData.Power = int(p.Val.(float64))
 			case "chargeCurrents":
-				chargepointData.IL1 = p.Val.([]float64)[0] * 1000
-				chargepointData.IL2 = p.Val.([]float64)[1] * 1000
-				chargepointData.IL3 = p.Val.([]float64)[2] * 1000
+				chargepointData.IL1 = int(p.Val.([]float64)[0] * 1000)
+				chargepointData.IL2 = int(p.Val.([]float64)[1] * 1000)
+				chargepointData.IL3 = int(p.Val.([]float64)[2] * 1000)
 			case "chargeVoltages":
-				chargepointData.UL1 = p.Val.([]float64)[0] * 1000
-				chargepointData.UL2 = p.Val.([]float64)[1] * 1000
-				chargepointData.UL3 = p.Val.([]float64)[2] * 1000
+				chargepointData.UL1 = int(p.Val.([]float64)[0] * 1000)
+				chargepointData.UL2 = int(p.Val.([]float64)[1] * 1000)
+				chargepointData.UL3 = int(p.Val.([]float64)[2] * 1000)
 			case "chargeCurrent":
-				chargepointData.HemsCurrent = p.Val.(float64)
+				chargepointData.HemsCurrent = int(p.Val.(float64))
 			case "vehicleIdentity":
 				chargepointData.ActiveRfid = p.Val.(string)
 			case "charging":
@@ -401,10 +416,11 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
 				if meters, ok := p.Val.([]core.MeterMeasurement); ok {
-					for id, meter := range meters {
+					for _, meter := range meters {
 						var energyMeterData EnergyMeterData
-						energyMeterData.Power = meter.Power
-						energyMeterData.Energy = meter.Energy
+						energyMeterData.Power = int(meter.Power)
+						energyMeterData.Energy = int(meter.Energy)
+
 						// Not supported yet
 						energyMeterData.IL1 = 0
 						energyMeterData.IL2 = 0
@@ -413,11 +429,35 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 						energyMeterData.UL2 = -1
 						energyMeterData.UL3 = -1
 
-						// Create Title from type and index for now, use that as id
-						energyMeterData.Title = fmt.Sprintf("%s-%d", p.Key, id)
+						// Create Title from meter type and id
+						energyMeterData.Title = fmt.Sprintf("%s-%s", p.Key, meter.Id)
+
 						energyMeterData.Timestamp = time.Now().Unix()
 						newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energyMeterData.Title)
 						payload, err := json.Marshal(energyMeterData)
+						if err == nil {
+							m.publishString(newTopic, false, string(payload[:]))
+						}
+					}
+				} else if batteries, ok := p.Val.([]core.BatteryMeasurement); ok {
+					for _, battery := range batteries {
+						var batteryMeterData BatteryMeterData
+						batteryMeterData.Power = int(battery.Power)
+						batteryMeterData.Energy = int(battery.Energy)
+
+						// Not supported yet
+						batteryMeterData.IL1 = 0
+						batteryMeterData.IL2 = 0
+						batteryMeterData.IL3 = 0
+						batteryMeterData.UL1 = -1
+						batteryMeterData.UL2 = -1
+						batteryMeterData.UL3 = -1
+
+						batteryMeterData.Title = fmt.Sprintf("%s-%s", p.Key, battery.Id)
+
+						batteryMeterData.Timestamp = time.Now().Unix()
+						newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, batteryMeterData.Title)
+						payload, err := json.Marshal(batteryMeterData)
 						if err == nil {
 							m.publishString(newTopic, false, string(payload[:]))
 						}

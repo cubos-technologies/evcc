@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,6 +42,7 @@ type updater interface {
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
+	Id     string  `json:"id`
 	Power  float64 `json:"power"`
 	Energy float64 `json:"energy,omitempty"`
 }
@@ -49,12 +51,15 @@ type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
+	Id           string  `json:"id`
 	Power        float64 `json:"power"`
 	Energy       float64 `json:"energy,omitempty"`
 	Soc          float64 `json:"soc,omitempty"`
 	Capacity     float64 `json:"capacity,omitempty"`
 	Controllable bool    `json:"controllable"`
 }
+
+type BatteryMeasurement = batteryMeasurement
 
 // Site is the main configuration container. A site can host multiple loadpoints.
 type Site struct {
@@ -452,6 +457,7 @@ func (site *Site) updatePvMeters() {
 		}
 
 		mm[i] = meterMeasurement{
+			Id:     strconv.Itoa(i),
 			Power:  power,
 			Energy: energy,
 		}
@@ -525,6 +531,7 @@ func (site *Site) updateBatteryMeters() error {
 		_, controllable := meter.(api.BatteryController)
 
 		mm[i] = batteryMeasurement{
+			Id:           strconv.Itoa(i),
 			Power:        power,
 			Energy:       energy,
 			Soc:          batSoc,
