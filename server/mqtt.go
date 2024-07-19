@@ -184,6 +184,10 @@ func (m *MQTT) listenSiteSetters(topic string, site site.API) error {
 			}
 			return nil
 		})},
+		{"/config", func(payload string) error {
+			err := MQTTnewDeviceHandler(payload, topic)
+			return err
+		}},
 	} {
 		if err := m.Handler.ListenSetter(topic+s.topic, s.fun); err != nil {
 			return err
