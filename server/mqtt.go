@@ -458,9 +458,9 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			gridMeterData.Title = "grid"
 			voltages, ok := p.Val.([]float64)
 			if ok {
-				gridMeterData.IL1 = int(voltages[0] * 1000)
-				gridMeterData.IL2 = int(voltages[1] * 1000)
-				gridMeterData.IL3 = int(voltages[2] * 1000)
+				gridMeterData.UL1 = int(voltages[0] * 1000)
+				gridMeterData.UL2 = int(voltages[1] * 1000)
+				gridMeterData.UL3 = int(voltages[2] * 1000)
 				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
