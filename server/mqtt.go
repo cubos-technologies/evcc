@@ -326,6 +326,16 @@ func (s *SafeMap) Store(key string, value interface{}) {
 // var energymeters = &SafeMap{}
 var chargepoints = &SafeMap{}
 
+var gridMeterData EnergyMeterData
+
+func publishEnergyMeter(m *MQTT, energyMeterData EnergyMeterData) {
+	newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energyMeterData.Title)
+	payload, err := json.Marshal(energyMeterData)
+	if err == nil {
+		m.publishString(newTopic, false, string(payload[:]))
+	}
+}
+
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 	// number of loadpoints
@@ -412,6 +422,35 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
+		case p.Key == "gridPower":
+			gridMeterData.Title = "grid"
+			power, ok := p.Val.(float64)
+			if ok {
+				gridMeterData.Power = int(power)
+				publishEnergyMeter(m, gridMeterData)
+			}
+			// for original MQTT values, can be removed later
+			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
+		case p.Key == "gridEnergy":
+			gridMeterData.Title = "grid"
+			energy, ok := p.Val.(float64)
+			if ok {
+				gridMeterData.Energy = int(energy)
+				publishEnergyMeter(m, gridMeterData)
+			}
+			// for original MQTT values, can be removed later
+			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
+		case p.Key == "gridCurrents":
+			gridMeterData.Title = "grid"
+			currents, ok := p.Val.([]float64)
+			if ok {
+				gridMeterData.IL1 = int(currents[0]) * 1000
+				gridMeterData.IL2 = int(currents[1]) * 1000
+				gridMeterData.IL3 = int(currents[2]) * 1000
+				publishEnergyMeter(m, gridMeterData)
+			}
+			// for original MQTT values, can be removed later
+			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
@@ -433,11 +472,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 						energyMeterData.Title = fmt.Sprintf("%s-%s", p.Key, meter.Id)
 
 						energyMeterData.Timestamp = time.Now().Unix()
-						newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energyMeterData.Title)
-						payload, err := json.Marshal(energyMeterData)
-						if err == nil {
-							m.publishString(newTopic, false, string(payload[:]))
-						}
+						publishEnergyMeter(m, energyMeterData)
 					}
 				} else if batteries, ok := p.Val.([]core.BatteryMeasurement); ok {
 					for _, battery := range batteries {
