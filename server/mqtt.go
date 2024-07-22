@@ -427,6 +427,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			power, ok := p.Val.(float64)
 			if ok {
 				gridMeterData.Power = int(power)
+				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
 			// for original MQTT values, can be removed later
@@ -436,6 +437,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			energy, ok := p.Val.(float64)
 			if ok {
 				gridMeterData.Energy = int(energy)
+				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
 			// for original MQTT values, can be removed later
@@ -444,9 +446,10 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			gridMeterData.Title = "grid"
 			currents, ok := p.Val.([]float64)
 			if ok {
-				gridMeterData.IL1 = int(currents[0]) * 1000
-				gridMeterData.IL2 = int(currents[1]) * 1000
-				gridMeterData.IL3 = int(currents[2]) * 1000
+				gridMeterData.IL1 = int(currents[0] * 1000)
+				gridMeterData.IL2 = int(currents[1] * 1000)
+				gridMeterData.IL3 = int(currents[2] * 1000)
+				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
 			// for original MQTT values, can be removed later
@@ -459,14 +462,12 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 						var energyMeterData EnergyMeterData
 						energyMeterData.Power = int(meter.Power)
 						energyMeterData.Energy = int(meter.Energy)
-
-						// Not supported yet
-						energyMeterData.IL1 = 0
-						energyMeterData.IL2 = 0
-						energyMeterData.IL3 = 0
-						energyMeterData.UL1 = -1
-						energyMeterData.UL2 = -1
-						energyMeterData.UL3 = -1
+						energyMeterData.IL1 = int(meter.Currents[0] * 1000)
+						energyMeterData.IL2 = int(meter.Currents[1] * 1000)
+						energyMeterData.IL3 = int(meter.Currents[2] * 1000)
+						energyMeterData.UL1 = int(meter.Voltages[0] * 1000)
+						energyMeterData.UL2 = int(meter.Voltages[1] * 1000)
+						energyMeterData.UL3 = int(meter.Voltages[2] * 1000)
 
 						// Create Title from meter type and id
 						energyMeterData.Title = fmt.Sprintf("%s-%s", p.Key, meter.Id)
