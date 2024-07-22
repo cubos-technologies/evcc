@@ -621,6 +621,14 @@ func (site *Site) updateGridMeter() error {
 		} else {
 			site.log.ERROR.Printf("grid currents: %v", err)
 		}
+
+		if u1, u2, u3, err := site.gridMeter.(api.PhaseVoltages).Voltages(); err == nil {
+			phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
+			site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
+			site.publish(keys.GridVoltages, phases)
+		} else {
+			site.log.ERROR.Printf("grid voltages: %v", err)
+		}
 	}
 
 	// grid energy (import)

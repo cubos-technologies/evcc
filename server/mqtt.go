@@ -454,6 +454,18 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			}
 			// for original MQTT values, can be removed later
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
+		case p.Key == "gridVoltages":
+			gridMeterData.Title = "grid"
+			voltages, ok := p.Val.([]float64)
+			if ok {
+				gridMeterData.IL1 = int(voltages[0] * 1000)
+				gridMeterData.IL2 = int(voltages[1] * 1000)
+				gridMeterData.IL3 = int(voltages[2] * 1000)
+				gridMeterData.Timestamp = time.Now().Unix()
+				publishEnergyMeter(m, gridMeterData)
+			}
+			// for original MQTT values, can be removed later
+			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
