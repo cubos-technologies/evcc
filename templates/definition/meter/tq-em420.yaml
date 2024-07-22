@@ -25,6 +25,15 @@ params:
     help:
       de: Token des EM420 (Erstellen unter Profil -> Zugangsschlüssel)
       en: Access token for EM420 (Create in Profile -> Access tokens)
+  - name: invert
+    required: false
+    example: false
+    description:
+      de: Invertieren
+      en: Invert
+    help:
+      de: Stromausgabenmessung invertieren
+      en: Invert power output reading
 render: |
   type: tq-em420
   uri: http://{{ .host }}:{{ .port }}
