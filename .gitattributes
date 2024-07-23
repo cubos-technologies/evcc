@@ -1,0 +1,2 @@
+# configure automatic crlf conversion to ensure Windows <-> DevEnv compatibility
+* text eol=lf
