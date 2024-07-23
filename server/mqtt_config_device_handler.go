@@ -142,3 +142,108 @@ func MQTTvalidateRefs(refs []string) error {
 	}
 	return nil
 }
+
+func MQTTupdateDeviceHandler(payload string, site site.API) error {
+	class, err := templates.ClassString("meter")
+
+	msg := strings.NewReader(payload)
+	var req map[string]any
+
+	if err := json.NewDecoder(msg).Decode(&req); err != nil {
+		return err
+	}
+	var id int
+	id = 0
+	var res []map[string]any
+	switch class {
+	case templates.Meter:
+		res, err = devicesConfig(class, config.Meters())
+
+	case templates.Charger:
+		res, err = devicesConfig(class, config.Chargers())
+
+	case templates.Vehicle:
+		res, err = devicesConfig(class, config.Vehicles())
+
+	case templates.Circuit:
+		res, err = devicesConfig(class, config.Circuits())
+	}
+
+	if res != nil {
+		return nil
+	}
+	switch class {
+	case templates.Charger:
+		err = updateDevice(id, class, req, charger.NewFromConfig, config.Chargers())
+
+	case templates.Meter: //battery like meter
+		err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters())
+
+	case templates.Vehicle:
+		err = updateDevice(id, class, req, vehicle.NewFromConfig, config.Vehicles())
+
+	case templates.Circuit:
+		err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
+			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+		}, config.Circuits())
+	}
+
+	if err != nil {
+		return err
+	}
+
+	setConfigDirty()
+
+	// res := struct {
+	// 	ID   int    `json:"id"`
+	// 	Name string `json:"name"`
+	// }{
+	// 	ID:   conf.ID,
+	// 	Name: config.NameForID(conf.ID),
+	// }
+	return err
+
+	// id, err := strconv.Atoi(vars["id"])
+	// if err != nil {
+	// 	jsonError(w, http.StatusBadRequest, err)
+	// 	return
+	// }
+
+	// var req map[string]any
+	// if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 	jsonError(w, http.StatusBadRequest, err)
+	// 	return
+	// }
+	// delete(req, "type")
+
+	// switch class {
+	// case templates.Charger:
+	// 	err = updateDevice(id, class, req, charger.NewFromConfig, config.Chargers())
+
+	// case templates.Meter:
+	// 	err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters())
+
+	// case templates.Vehicle:
+	// 	err = updateDevice(id, class, req, vehicle.NewFromConfig, config.Vehicles())
+
+	// case templates.Circuit:
+	// 	err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
+	// 		return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+	// 	}, config.Circuits())
+	// }
+
+	// setConfigDirty()
+
+	// if err != nil {
+	// 	jsonError(w, http.StatusBadRequest, err)
+	// 	return
+	// }
+
+	// res := struct {
+	// 	ID int `json:"id"`
+	// }{
+	// 	ID: id,
+	// }
+
+	// jsonResult(w, res)
+}
