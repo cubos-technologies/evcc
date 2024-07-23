@@ -152,7 +152,7 @@ func (m *MQTT) Listen(site site.API) error {
 		return err
 	}
 
-	if err := m.listenMeterConfig(m.root+"/Energymeter/+", site); err != nil {
+	if err := m.listenMeterConfig(m.root+"/meter", site); err != nil {
 		return err
 	}
 
@@ -186,7 +186,7 @@ func (m *MQTT) listenMeterConfig(topic string, site site.API) error {
 			return err
 		}},
 		{"/update", func(payload string) error {
-			err := MQTTupdateDeviceHandler(payload, site)
+			err := MQTTupdateDeviceHandler(payload, site, topic)
 			return err
 		}},
 	} {

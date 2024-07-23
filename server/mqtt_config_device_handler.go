@@ -18,7 +18,8 @@ import (
 )
 
 func MQTTnewDeviceHandler(payload string, topic string) error {
-	class, err := templates.ClassString("meter")
+	classstr := strings.Split(topic, "/")
+	class, err := templates.ClassString(classstr[len(classstr)-1])
 
 	msg := strings.NewReader(payload)
 	var req map[string]any
@@ -56,24 +57,13 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 		ID:   conf.ID,
 		Name: config.NameForID(conf.ID),
 	}
-	settings.SetString(keys.PvMeters, res.Name)
+	oldRef, err := settings.String(keys.PvMeters)
+	newRef := oldRef + "," + res.Name
+	settings.SetString(keys.PvMeters, newRef)
 	settings.Persist()
 
 	return err
 }
-
-//need to add /set behind topic
-// http://localhost:7070/api/config/test/meter
-
-// -> http://localhost:7070/api/config/devices/meter {
-//   "template": "tq-em420",
-//   "port": "80",
-//   "type": "template",
-//   "device": "local",
-//   "host": "192.168.200.172",
-//   "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJFVkNDLVRvbSIsImNyZSI6MTcyMDQyNjIyMSwiZXhwIjoyNTM0MDIyMTQ0MDAsImlzcyI6IlRRUyIsImp0aSI6ImJlNzNjYWQxLTg1MzctNDViOS1hYTMwLWM3Y2NmZjJlNjJmMiIsIm5vbmMiOjE0MjcxMzE4NDcsInJvbGUiOiJhcGkiLCJzdWIiOiJFTU9TIn0.TJ4segp_QHbCKK0SOzCLk5Sm962WJIPiQ0YzDQH4YLefxeSXZPF-h8_Uz0XESUcvXsBdEdavAnzq2mKK7Ikpsm_VN5ayugceBbey-6wZr-CYDH5_6XyMAl4t0cShpAA0cR7vHsL6nVXf5SEBbZlnWNyJYl71ZydXwTUPCFg5-BXEK4YYbkcUQQPqPDbusR2OgskFQo1lpM9ucFRIiOcL47TPbowS91e0k19qqREwozRNfi_s_db16zmqyoCOmM8YJgn7Kqq6cCSnUO_0Fa132hu-lT0shpx80cW4s3p57d7UeUeRFjS5p3Eig5OoNbrGiingKUPA_-I_1WJqTnFQ-w",
-//   "usage": "pv"
-// } done
 
 //	-> http://localhost:7070/api/config/site {
 //	  "pv": [
@@ -143,8 +133,9 @@ func MQTTvalidateRefs(refs []string) error {
 	return nil
 }
 
-func MQTTupdateDeviceHandler(payload string, site site.API) error {
-	class, err := templates.ClassString("meter")
+func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error {
+	classstr := strings.Split(topic, "/")
+	class, err := templates.ClassString(classstr[len(classstr)-1])
 
 	msg := strings.NewReader(payload)
 	var req map[string]any
@@ -169,9 +160,15 @@ func MQTTupdateDeviceHandler(payload string, site site.API) error {
 		res, err = devicesConfig(class, config.Circuits())
 	}
 
-	if res != nil {
-		return nil
+	for _, res2 := range res {
+		if res3, found := res2["config"].(map[string]any); found {
+			if res3["name"] == req["name"] {
+				id = res2["id"].(int)
+				break
+			}
+		}
 	}
+
 	switch class {
 	case templates.Charger:
 		err = updateDevice(id, class, req, charger.NewFromConfig, config.Chargers())
