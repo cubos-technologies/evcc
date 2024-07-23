@@ -59,7 +59,7 @@ const (
 var ValidRequirements = []string{RequirementEEBUS, RequirementMQTT, RequirementSponsorship}
 
 var predefinedTemplateProperties = []string{
-	"type", "template", "name",
+	"type", "template", "name", "cubos_id",
 	ModbusParamNameId, ModbusParamNameDevice, ModbusParamNameBaudrate, ModbusParamNameComset,
 	ModbusParamNameURI, ModbusParamNameHost, ModbusParamNamePort, ModbusParamNameRTU,
 	ModbusKeyTCPIP, ModbusKeyRS485Serial, ModbusKeyRS485TCPIP,

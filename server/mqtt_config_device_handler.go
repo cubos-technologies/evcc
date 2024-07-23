@@ -57,11 +57,7 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 		ID:   conf.ID,
 		Name: config.NameForID(conf.ID),
 	}
-	oldRef, err := settings.String(keys.PvMeters)
-	newRef := oldRef + "," + res.Name
-	settings.SetString(keys.PvMeters, newRef)
-	settings.Persist()
-
+	MQTTupdateRef(req["usage"].(string), class, res.Name)
 	return err
 }
 
@@ -72,6 +68,45 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 //	    "db:13"
 //	  ]
 //	}
+//
+// req["usage"].(string)
+func MQTTupdateRef(usage string, class templates.Class, name string) error {
+	switch class {
+	case templates.Charger:
+
+	case templates.Meter: //battery like meter
+		var key string
+		switch usage {
+		case "pv":
+			key = keys.PvMeters
+		case "grid":
+			key = keys.GridMeter
+			newRef := name
+			settings.SetString(key, newRef) //error handling only one grid possible
+			settings.Persist()
+			return nil
+		case "battery":
+			key = keys.BatteryMeters
+		case "aux":
+			key = keys.AuxMeters
+		}
+		newRef := name
+		if oldRef, err := settings.String(key); err == nil {
+			if oldRef != "" {
+				newRef = oldRef + "," + name
+			}
+		}
+		settings.SetString(key, newRef)
+		settings.Persist()
+
+	case templates.Vehicle:
+
+	case templates.Circuit:
+
+	}
+	return nil
+}
+
 func MQTTupdateSiteHandler(payload string, site site.API) error {
 	var payload_struct struct {
 		Title   *string
@@ -162,7 +197,7 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 
 	for _, res2 := range res {
 		if res3, found := res2["config"].(map[string]any); found {
-			if res3["name"] == req["name"] {
+			if res3["cubos_id"] == req["cubos_id"] { //error handling
 				id = res2["id"].(int)
 				break
 			}
@@ -190,7 +225,7 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 	}
 
 	setConfigDirty()
-
+	MQTTupdateRef(req["usage"].(string), class, config.NameForID(id))
 	// res := struct {
 	// 	ID   int    `json:"id"`
 	// 	Name string `json:"name"`
