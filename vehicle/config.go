@@ -52,7 +52,12 @@ func NewFromConfig(typ string, other map[string]interface{}) (api.Vehicle, error
 	if err := util.DecodeOther(other, &cc); err != nil {
 		return nil, err
 	}
-
+	if stringarray, found := cc.Other["identifiers"].(string); found {
+		stringarray = strings.ReplaceAll(stringarray, "[", "")
+		stringarray = strings.ReplaceAll(stringarray, "]", "")
+		array := strings.Split(stringarray, " ")
+		cc.Other["identifiers"] = array
+	}
 	if cc.Cloud {
 		cc.Other["brand"] = typ
 		typ = "cloud"
