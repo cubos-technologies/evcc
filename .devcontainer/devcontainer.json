@@ -18,7 +18,8 @@
 			"settings": {},
 			"extensions": [
 				"esbenp.prettier-vscode",
-				"octref.vetur"
+				"octref.vetur",
+				"yy0931.vscode-sqlite3-editor"
 			]
 		}
 	},
