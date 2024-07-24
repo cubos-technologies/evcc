@@ -41,7 +41,7 @@ type Client struct {
 	broker   string
 	Qos      byte
 	inflight uint32
-	listener map[string][]func(string)
+	listener map[string][]func(string, string)
 }
 
 type Option func(*paho.ClientOptions)
@@ -61,7 +61,7 @@ func NewClient(log *util.Logger, broker, user, password, clientID string, qos by
 	mc := &Client{
 		log:      log,
 		Qos:      qos,
-		listener: make(map[string][]func(string)),
+		listener: make(map[string][]func(string, string)),
 	}
 
 	options := paho.NewClientOptions()
@@ -152,7 +152,7 @@ func (m *Client) Publish(topic string, retained bool, payload interface{}) error
 }
 
 // Listen attaches listener to slice of listeners for given topic
-func (m *Client) Listen(topic string, callback func(string)) error {
+func (m *Client) Listen(topic string, callback func(string, string)) error {
 	m.mux.Lock()
 	m.listener[topic] = append(m.listener[topic], callback)
 	m.mux.Unlock()
@@ -170,12 +170,28 @@ func (m *Client) Listen(topic string, callback func(string)) error {
 // ListenSetter creates a /set listener that resets the payload after handling
 func (m *Client) ListenSetter(topic string, callback func(string) error) error {
 	topic += "/set"
-	err := m.Listen(topic, func(payload string) {
+	err := m.Listen(topic, func(payload string, full_topic string) {
 		if err := callback(payload); err != nil {
-			m.log.ERROR.Printf("set %s: %v", topic, err)
+			m.log.ERROR.Printf("set %s: %v", full_topic, err)
+			return
 		}
 		if err := m.Publish(topic, true, ""); err != nil {
-			m.log.ERROR.Printf("clear: %s: %v", topic, err)
+			m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
+		}
+	})
+	return err
+}
+
+// ListenSetter but returns the full topic as well
+func (m *Client) ListenSetterWithTopic(topic string, callback func(string, string) error) error {
+	topic += "/set"
+	err := m.Listen(topic, func(payload string, full_topic string) {
+		if err := callback(payload, full_topic); err != nil {
+			m.log.ERROR.Printf("set %s: %v", full_topic, err)
+			return
+		}
+		if err := m.Publish(topic, true, ""); err != nil {
+			m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
 		}
 	})
 	return err
@@ -186,13 +202,14 @@ func (m *Client) listen(topic string) paho.Token {
 	token := m.Client.Subscribe(topic, m.Qos, func(c paho.Client, msg paho.Message) {
 		payload := string(msg.Payload())
 		m.log.TRACE.Printf("recv %s: '%v'", topic, payload)
+		m.log.TRACE.Printf("full topic: '%s'", string(msg.Topic()))
 		if len(payload) > 0 {
 			m.mux.Lock()
 			callbacks := m.listener[topic]
 			m.mux.Unlock()
 
 			for _, cb := range callbacks {
-				cb(payload)
+				cb(payload, msg.Topic())
 			}
 		}
 	})
