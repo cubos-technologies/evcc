@@ -152,7 +152,11 @@ func (m *MQTT) Listen(site site.API) error {
 		return err
 	}
 
-	if err := m.listenMeterConfig(m.root+"/meter/+", site); err != nil {
+	// if err := m.listenMeterConfig(m.root+"/meter/+", site); err != nil {
+	// 	return err
+	// }
+
+	if err := m.listenConfig(m.root, site); err != nil {
 		return err
 	}
 
@@ -175,6 +179,27 @@ func (m *MQTT) Listen(site site.API) error {
 	return nil
 }
 
+func (m *MQTT) listenConfig(topic string, site site.API) error {
+	for _, s := range []setterWithTopic{
+		{"/meter/+/config", func(payload string, full_topic string) error {
+			err := MQTTupdateDeviceHandler(payload, site, full_topic)
+			return err
+		}},
+		{"/vehicle/+/config", func(payload string, full_topic string) error {
+			err := MQTTupdateDeviceHandler(payload, site, full_topic)
+			return err
+		}},
+		{"/charger/+/config", func(payload string, full_topic string) error {
+			err := MQTTupdateDeviceHandler(payload, site, full_topic)
+			return err
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (m *MQTT) listenMeterConfig(topic string, site site.API) error {
 	for _, s := range []setterWithTopic{
 		{"/config", func(payload string, full_topic string) error {
@@ -187,7 +212,7 @@ func (m *MQTT) listenMeterConfig(topic string, site site.API) error {
 		}},
 		{"/update", func(payload string, full_topic string) error {
 			err := MQTTupdateDeviceHandler(payload, site, full_topic)
-			return err
+			return err //publisherror
 		}},
 	} {
 		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {

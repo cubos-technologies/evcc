@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger"
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/server/db/settings"
@@ -17,9 +19,18 @@ import (
 	"github.com/evcc-io/evcc/vehicle"
 )
 
+type chargerConfig struct {
+	Type     string `json:"type"`
+	Template string `json:"template"`
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	Cubos_id string `json:"cubos_id"`
+}
+
 func MQTTnewDeviceHandler(payload string, topic string) error {
 	classstr := strings.Split(topic, "/")
-	class, err := templates.ClassString(classstr[len(classstr)-1])
+	class, err := templates.ClassString(classstr[len(classstr)-4])
+	//class, err := templates.ClassString("charger")
 
 	msg := strings.NewReader(payload)
 	var req map[string]any
@@ -30,18 +41,57 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 	var conf *config.Config
 	switch class {
 	case templates.Charger:
-		conf, err = newDevice(class, req, charger.NewFromConfig, config.Chargers())
+		var cc struct {
+			chargerConfig `mapstructure:",squash"`
+			Other         map[string]any `mapstructure:",remain"`
+		}
+		if err := util.DecodeOther(req, &cc); err != nil {
+			return err
+		}
+		//Helper to make struct to stringmap
+		var inInterface map[string]interface{}
+		var inrec []byte
+		inrec, err := json.Marshal(cc.chargerConfig)
+		if err != nil {
+			return err
+		}
+
+		if err = json.Unmarshal(inrec, &inInterface); err != nil {
+			return err
+		}
+
+		if conf, err = newDevice(class, inInterface, charger.NewFromConfig, config.Chargers()); err != nil {
+			return err
+		}
+
+		charger := config.NameForID(conf.ID)
+		cc.Other["charger"] = charger
+		if inrec, err = json.Marshal(cc.Other); err != nil {
+			return err
+		}
+
+		if err = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+			return err
+		}
 
 	case templates.Meter: //battery like meter
-		conf, err = newDevice(class, req, meter.NewFromConfig, config.Meters())
-
+		if conf, err = newDevice(class, req, meter.NewFromConfig, config.Meters()); err != nil {
+			return err
+		}
+		if usage, found := req["usage"].(string); found {
+			MQTTupdateRef(usage, class, config.NameForID(conf.ID))
+		}
 	case templates.Vehicle:
-		conf, err = newDevice(class, req, vehicle.NewFromConfig, config.Vehicles())
+		if _, err = newDevice(class, req, vehicle.NewFromConfig, config.Vehicles()); err != nil {
+			return err
+		}
 
 	case templates.Circuit:
-		conf, err = newDevice(class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
+		if _, err = newDevice(class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
 			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
-		}, config.Circuits())
+		}, config.Circuits()); err != nil {
+			return err
+		}
 	}
 
 	if err != nil {
@@ -49,27 +99,9 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 	}
 
 	setConfigDirty()
-
-	res := struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
-	}{
-		ID:   conf.ID,
-		Name: config.NameForID(conf.ID),
-	}
-	MQTTupdateRef(req["usage"].(string), class, res.Name)
 	return err
 }
 
-//	-> http://localhost:7070/api/config/site {
-//	  "pv": [
-//	    "pv",
-//	    "db:12",
-//	    "db:13"
-//	  ]
-//	}
-//
-// req["usage"].(string)
 func MQTTupdateRef(usage string, class templates.Class, name string) error {
 	switch class {
 	case templates.Charger:
@@ -155,8 +187,6 @@ func MQTTupdateSiteHandler(payload string, site site.API) error {
 		setConfigDirty()
 	}
 	return nil
-	// settings.SetString(keys.PvMeters, "name1,name2,...")
-	// settings.Persist()
 }
 
 func MQTTvalidateRefs(refs []string) error {
@@ -170,7 +200,7 @@ func MQTTvalidateRefs(refs []string) error {
 
 func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error {
 	classstr := strings.Split(topic, "/")
-	class, err := templates.ClassString(classstr[len(classstr)-1])
+	class, err := templates.ClassString(classstr[len(classstr)-4])
 
 	msg := strings.NewReader(payload)
 	var req map[string]any
@@ -197,85 +227,105 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 
 	for _, res2 := range res {
 		if res3, found := res2["config"].(map[string]any); found {
-			if res3["cubos_id"] == req["cubos_id"] { //error handling
-				id = res2["id"].(int)
-				break
+			if cubos_id, found2 := res3["cubos_id"].(string); found2 {
+				if req_cubos_id, found3 := req["cubos_id"].(string); found3 {
+					if cubos_id == req_cubos_id {
+						id = res2["id"].(int)
+						break
+					}
+				}
 			}
 		}
 	}
 
+	if id == 0 {
+		err = MQTTnewDeviceHandler(payload, topic)
+		return err
+	}
+
 	switch class {
 	case templates.Charger:
-		err = updateDevice(id, class, req, charger.NewFromConfig, config.Chargers())
+		var cc struct {
+			chargerConfig `mapstructure:",squash"`
+			Other         map[string]any `mapstructure:",remain"`
+		}
+		if err := util.DecodeOther(req, &cc); err != nil {
+			return err
+		}
+		//Helper to make struct to stringmap
+		var inInterface map[string]interface{}
+		var inrec []byte
+		inrec, err := json.Marshal(cc.chargerConfig)
+		if err != nil {
+			return err
+		}
+
+		if err = json.Unmarshal(inrec, &inInterface); err != nil {
+			return err
+		}
+
+		if err = updateDevice(id, class, inInterface, charger.NewFromConfig, config.Chargers()); err != nil {
+			return err
+		}
 
 	case templates.Meter: //battery like meter
 		err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters())
+		if usage, found := req["usage"].(string); found {
+			if err = MQTTupdateRef(usage, class, config.NameForID(id)); err != nil {
+				return err
+			}
+		}
 
 	case templates.Vehicle:
-		err = updateDevice(id, class, req, vehicle.NewFromConfig, config.Vehicles())
+		if err = updateDevice(id, class, req, vehicle.NewFromConfig, config.Vehicles()); err != nil {
+			return err
+		}
 
 	case templates.Circuit:
-		err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
+		if err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
 			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
-		}, config.Circuits())
+		}, config.Circuits()); err != nil {
+			return err
+		}
 	}
+
+	setConfigDirty()
+	return err
+}
+
+func MQTTnewLoadpointHandler(payload string) error {
+	h := config.Loadpoints()
+	msg := strings.NewReader(payload)
+	dynamic, static, err := loadpointSplitConfig(msg)
 
 	if err != nil {
 		return err
 	}
 
+	id := len(h.Devices())
+	name := "lp-" + strconv.Itoa(id+1)
+
+	log := util.NewLoggerWithLoadpoint(name, id+1)
+
+	instance, err := core.NewLoadpointFromConfig(log, nil, static)
+	if err != nil {
+		return err
+	}
+	//not yet saving "dynamic" data in db
+	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
+		return err
+	}
+
+	conf, err := config.AddConfig(templates.Loadpoint, "", static)
+	if err != nil {
+		return err
+	}
+
+	if err := h.Add(config.NewConfigurableDevice(conf, loadpoint.API(instance))); err != nil {
+		return err
+	}
+
 	setConfigDirty()
-	MQTTupdateRef(req["usage"].(string), class, config.NameForID(id))
-	// res := struct {
-	// 	ID   int    `json:"id"`
-	// 	Name string `json:"name"`
-	// }{
-	// 	ID:   conf.ID,
-	// 	Name: config.NameForID(conf.ID),
-	// }
+
 	return err
-
-	// id, err := strconv.Atoi(vars["id"])
-	// if err != nil {
-	// 	jsonError(w, http.StatusBadRequest, err)
-	// 	return
-	// }
-
-	// var req map[string]any
-	// if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-	// 	jsonError(w, http.StatusBadRequest, err)
-	// 	return
-	// }
-	// delete(req, "type")
-
-	// switch class {
-	// case templates.Charger:
-	// 	err = updateDevice(id, class, req, charger.NewFromConfig, config.Chargers())
-
-	// case templates.Meter:
-	// 	err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters())
-
-	// case templates.Vehicle:
-	// 	err = updateDevice(id, class, req, vehicle.NewFromConfig, config.Vehicles())
-
-	// case templates.Circuit:
-	// 	err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
-	// 		return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
-	// 	}, config.Circuits())
-	// }
-
-	// setConfigDirty()
-
-	// if err != nil {
-	// 	jsonError(w, http.StatusBadRequest, err)
-	// 	return
-	// }
-
-	// res := struct {
-	// 	ID int `json:"id"`
-	// }{
-	// 	ID: id,
-	// }
-
-	// jsonResult(w, res)
 }
