@@ -190,7 +190,7 @@ func (m *Client) ListenSetterWithTopic(topic string, callback func(string, strin
 			m.log.ERROR.Printf("set %s: %v", full_topic, err)
 			return
 		}
-		if err := m.Publish(topic, true, ""); err != nil {
+		if err := m.Publish(full_topic, true, ""); err != nil {
 			m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
 		}
 	})
