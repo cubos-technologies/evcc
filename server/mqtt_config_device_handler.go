@@ -65,12 +65,19 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 		}
 
 		charger := config.NameForID(conf.ID)
-		cc.Other["charger"] = charger
+		if cc.Other != nil {
+			cc.Other["charger"] = charger
+		} else {
+			cc.Other = map[string]interface{}{
+				"charger": charger,
+			}
+		}
 		if inrec, err = json.Marshal(cc.Other); err != nil {
 			return err
 		}
 
 		if err = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+			//delete charger
 			return err
 		}
 
@@ -269,11 +276,8 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 		}
 
 	case templates.Meter: //battery like meter
-		err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters())
-		if usage, found := req["usage"].(string); found {
-			if err = MQTTupdateRef(usage, class, config.NameForID(id)); err != nil {
-				return err
-			}
+		if err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
+			return err
 		}
 
 	case templates.Vehicle:
