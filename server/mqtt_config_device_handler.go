@@ -17,6 +17,7 @@ import (
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/templates"
 	"github.com/evcc-io/evcc/vehicle"
+	"github.com/samber/lo"
 )
 
 type chargerConfig struct {
@@ -86,7 +87,7 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 			return err
 		}
 		if usage, found := req["usage"].(string); found {
-			MQTTupdateRef(usage, class, config.NameForID(conf.ID))
+			MQTTupdateRef(usage, class, config.NameForID(conf.ID), false)
 		}
 	case templates.Vehicle:
 		if _, err = newDevice(class, req, vehicle.NewFromConfig, config.Vehicles()); err != nil {
@@ -109,7 +110,7 @@ func MQTTnewDeviceHandler(payload string, topic string) error {
 	return err
 }
 
-func MQTTupdateRef(usage string, class templates.Class, name string) error {
+func MQTTupdateRef(usage string, class templates.Class, name string, delete bool) error {
 	switch class {
 	case templates.Charger:
 
@@ -120,7 +121,7 @@ func MQTTupdateRef(usage string, class templates.Class, name string) error {
 			key = keys.PvMeters
 		case "grid":
 			key = keys.GridMeter
-			newRef := name
+			newRef := ""
 			settings.SetString(key, newRef) //error handling only one grid possible
 			settings.Persist()
 			return nil
@@ -129,10 +130,17 @@ func MQTTupdateRef(usage string, class templates.Class, name string) error {
 		case "aux":
 			key = keys.AuxMeters
 		}
+
 		newRef := name
 		if oldRef, err := settings.String(key); err == nil {
 			if oldRef != "" {
-				newRef = oldRef + "," + name
+				if delete {
+					newRef = strings.ReplaceAll(oldRef, name+",", "")
+					newRef = strings.ReplaceAll(oldRef, ","+name, "")
+				} else {
+					newRef = oldRef + "," + name
+				}
+
 			}
 		}
 		settings.SetString(key, newRef)
@@ -216,34 +224,7 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 		return err
 	}
 	var id int
-	id = 0
-	var res []map[string]any
-	switch class {
-	case templates.Meter:
-		res, err = devicesConfig(class, config.Meters())
-
-	case templates.Charger:
-		res, err = devicesConfig(class, config.Chargers())
-
-	case templates.Vehicle:
-		res, err = devicesConfig(class, config.Vehicles())
-
-	case templates.Circuit:
-		res, err = devicesConfig(class, config.Circuits())
-	}
-
-	for _, res2 := range res {
-		if res3, found := res2["config"].(map[string]any); found {
-			if cubos_id, found2 := res3["cubos_id"].(string); found2 {
-				if req_cubos_id, found3 := req["cubos_id"].(string); found3 {
-					if cubos_id == req_cubos_id {
-						id = res2["id"].(int)
-						break
-					}
-				}
-			}
-		}
-	}
+	id, err = CubosIdToId(req["cubos_id"].(string), class)
 
 	if id == 0 {
 		err = MQTTnewDeviceHandler(payload, topic)
@@ -332,4 +313,123 @@ func MQTTnewLoadpointHandler(payload string) error {
 	setConfigDirty()
 
 	return err
+}
+
+func MQTTdeleteDeviceHandler(payload string, site site.API, topic string) error {
+	classstr := strings.Split(topic, "/")
+	class, err := templates.ClassString(classstr[len(classstr)-4])
+
+	msg := strings.NewReader(payload)
+	var req map[string]any
+
+	if err := json.NewDecoder(msg).Decode(&req); err != nil {
+		return err
+	}
+	var id int
+	id, err = CubosIdToId(req["cubos_id"].(string), class)
+
+	switch class {
+	case templates.Charger:
+
+		if err = MQTTdeleteLoadpointHandler(id); err != nil {
+			return err
+		}
+		if err = deleteDevice(id, config.Chargers()); err != nil {
+			return err
+		}
+
+	case templates.Meter:
+		if usage, found := req["usage"].(string); found {
+			MQTTupdateRef(usage, class, config.NameForID(id), true)
+		}
+		err = deleteDevice(id, config.Meters())
+
+	case templates.Vehicle:
+		err = deleteDevice(id, config.Vehicles())
+
+	case templates.Circuit:
+		err = deleteDevice(id, config.Circuits())
+	}
+
+	setConfigDirty()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func MQTTdeleteLoadpointHandler(id int) error {
+	h := config.Loadpoints()
+	//class, err := templates.ClassString("loadpoints")
+
+	//var res []map[string]any
+	res := lo.Map(config.Loadpoints().Devices(), func(dev config.Device[loadpoint.API], _ int) loadpointFullConfig {
+		return loadpointConfig(dev)
+	})
+	//res, err = devicesConfig(class, config.Loadpoints())
+
+	// if err != nil {
+	// 	return err
+	// }
+	var idToDelete int
+
+	for _, res2 := range res {
+		if res2.Charger == config.NameForID(id) {
+			idToDelete = res2.ID
+		}
+	}
+
+	setConfigDirty()
+
+	if err := deleteDevice(idToDelete, h); err != nil {
+		return err
+	}
+	return nil
+}
+
+func CubosIdToId(cubos_id string, class templates.Class) (int, error) {
+	var id int
+	id = 0
+	var err error
+	var res []map[string]any
+	switch class {
+	case templates.Meter:
+		if res, err = devicesConfig(class, config.Meters()); err != nil {
+			return 0, err
+		}
+
+	case templates.Charger:
+		if res, err = devicesConfig(class, config.Chargers()); err != nil {
+			return 0, err
+		}
+
+	case templates.Vehicle:
+		if res, err = devicesConfig(class, config.Vehicles()); err != nil {
+			return 0, err
+		}
+
+	case templates.Circuit:
+		if res, err = devicesConfig(class, config.Circuits()); err != nil {
+			return 0, err
+		}
+
+	case templates.Loadpoint:
+		if res, err = devicesConfig(class, config.Loadpoints()); err != nil {
+			return 0, err
+		}
+	}
+
+	for _, res2 := range res {
+		if res3, found := res2["config"].(map[string]any); found {
+			if cubos_id_, found2 := res3["cubos_id"].(string); found2 {
+				if cubos_id_ == cubos_id {
+					id = res2["id"].(int)
+					break
+				}
+			}
+		}
+	}
+	return id, nil
 }

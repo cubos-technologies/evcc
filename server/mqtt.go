@@ -182,16 +182,52 @@ func (m *MQTT) Listen(site site.API) error {
 func (m *MQTT) listenConfig(topic string, site site.API) error {
 	for _, s := range []setterWithTopic{
 		{"/meter/+/config", func(payload string, full_topic string) error {
-			err := MQTTupdateDeviceHandler(payload, site, full_topic)
-			return err
+			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
 		}},
 		{"/vehicle/+/config", func(payload string, full_topic string) error {
-			err := MQTTupdateDeviceHandler(payload, site, full_topic)
-			return err
+			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
 		}},
 		{"/charger/+/config", func(payload string, full_topic string) error {
-			err := MQTTupdateDeviceHandler(payload, site, full_topic)
-			return err
+			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/meter/+/remove", func(payload string, full_topic string) error {
+			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/charger/+/remove", func(payload string, full_topic string) error {
+			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/vehicle/+/remove", func(payload string, full_topic string) error {
+			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
 		}},
 	} {
 		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {
@@ -200,27 +236,7 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 	}
 	return nil
 }
-func (m *MQTT) listenMeterConfig(topic string, site site.API) error {
-	for _, s := range []setterWithTopic{
-		{"/config", func(payload string, full_topic string) error {
-			err := MQTTnewDeviceHandler(payload, full_topic)
-			return err
-		}},
-		{"/configsite", func(payload string, full_topic string) error {
-			err := MQTTupdateSiteHandler(payload, site)
-			return err
-		}},
-		{"/update", func(payload string, full_topic string) error {
-			err := MQTTupdateDeviceHandler(payload, site, full_topic)
-			return err //publisherror
-		}},
-	} {
-		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+
 func (m *MQTT) listenSiteSetters(topic string, site site.API) error {
 	for _, s := range []setter{
 		{"/bufferSoc", floatSetter(site.SetBufferSoc)},
