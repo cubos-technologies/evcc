@@ -136,7 +136,7 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 			if oldRef != "" {
 				if delete {
 					newRef = strings.ReplaceAll(oldRef, name+",", "")
-					newRef = strings.ReplaceAll(oldRef, ","+name, "")
+					newRef = strings.ReplaceAll(newRef, ","+name, "")
 				} else {
 					newRef = oldRef + "," + name
 				}
