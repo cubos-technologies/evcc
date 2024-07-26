@@ -122,6 +122,9 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 		case "grid":
 			key = keys.GridMeter
 			newRef := ""
+			if !delete {
+				newRef = name
+			}
 			settings.SetString(key, newRef) //error handling only one grid possible
 			settings.Persist()
 			return nil
@@ -137,6 +140,7 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 				if delete {
 					newRef = strings.ReplaceAll(oldRef, name+",", "")
 					newRef = strings.ReplaceAll(newRef, ","+name, "")
+					newRef = strings.ReplaceAll(newRef, name, "")
 				} else {
 					newRef = oldRef + "," + name
 				}
@@ -257,8 +261,16 @@ func MQTTupdateDeviceHandler(payload string, site site.API, topic string) error 
 		}
 
 	case templates.Meter: //battery like meter
-		if err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
+		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
+			if usage, found := res["config"].(map[string]interface{})["usage"].(string); found {
+				MQTTupdateRef(usage, class, config.NameForID(id), true)
+			}
+		}
+		if err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters()); err != nil { //usage Änderung muss auch Ref ändern
 			return err
+		}
+		if usage, found := req["usage"].(string); found {
+			MQTTupdateRef(usage, class, config.NameForID(id), false)
 		}
 
 	case templates.Vehicle:
@@ -339,11 +351,12 @@ func MQTTdeleteDeviceHandler(payload string, site site.API, topic string) error 
 		}
 
 	case templates.Meter:
+		if err = deleteDevice(id, config.Meters()); err != nil {
+			return err
+		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(id), true)
 		}
-		err = deleteDevice(id, config.Meters())
-
 	case templates.Vehicle:
 		err = deleteDevice(id, config.Vehicles())
 
