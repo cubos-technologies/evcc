@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -436,9 +437,9 @@ func (site *Site) publishDelta(key string, val interface{}) {
 }
 
 // updatePvMeters updates pv meters. All measurements are optional.
-func (site *Site) updatePvMeters() {
+func (site *Site) updatePvMeters() map[string]map[string]interface{} {
 	if len(site.pvMeters) == 0 {
-		return
+		return nil
 	}
 
 	var totalEnergy float64
@@ -481,12 +482,25 @@ func (site *Site) updatePvMeters() {
 	site.publish(keys.PvPower, site.pvPower)
 	site.publish(keys.PvEnergy, totalEnergy)
 	site.publish(keys.Pv, mm)
+
+	inInterface := make(map[string]map[string]interface{})
+
+	for index, element := range mm {
+		var inrec []byte
+		inrec, err := json.Marshal(element)
+		var temp map[string]interface{}
+		if err = json.Unmarshal(inrec, &temp); err != nil {
+			return nil
+		}
+		inInterface["pv_"+fmt.Sprint(index)] = temp
+	}
+	return inInterface
 }
 
 // updateLogMeters updates log meters. All measurements are optional.
-func (site *Site) updateLogMeters() {
+func (site *Site) updateLogMeters() map[string]map[string]interface{} {
 	if len(site.logMeters) == 0 {
-		return
+		return nil
 	}
 
 	mm := make([]meterMeasurement, len(site.logMeters))
@@ -513,13 +527,26 @@ func (site *Site) updateLogMeters() {
 		}
 	}
 
-	site.publish(keys.Log, mm)
+	//site.publish(keys.Log, mm)
+
+	inInterface := make(map[string]map[string]interface{})
+
+	for index, element := range mm {
+		var inrec []byte
+		inrec, err := json.Marshal(element)
+		var temp map[string]interface{}
+		if err = json.Unmarshal(inrec, &temp); err != nil {
+			return nil
+		}
+		inInterface["monitoring_"+fmt.Sprint(index)] = temp
+	}
+	return inInterface
 }
 
 // updateBatteryMeters updates battery meters. Power is retried, other measurements are optional.
-func (site *Site) updateBatteryMeters() error {
+func (site *Site) updateBatteryMeters() (error, map[string]map[string]interface{}) {
 	if len(site.batteryMeters) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var totalCapacity, totalEnergy float64
@@ -533,7 +560,7 @@ func (site *Site) updateBatteryMeters() error {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err != nil {
 			// power is required- return on error
-			return fmt.Errorf("battery %d power: %v", i+1, err)
+			return fmt.Errorf("battery %d power: %v", i+1, err), nil
 		}
 
 		site.batteryPower += power
@@ -602,7 +629,18 @@ func (site *Site) updateBatteryMeters() error {
 	site.publish(keys.BatteryEnergy, totalEnergy)
 	site.publish(keys.Battery, mm)
 
-	return nil
+	inInterface := make(map[string]map[string]interface{})
+
+	for index, element := range mm {
+		var inrec []byte
+		inrec, err := json.Marshal(element)
+		var temp map[string]interface{}
+		if err = json.Unmarshal(inrec, &temp); err != nil {
+			return err, nil
+		}
+		inInterface["battery_"+fmt.Sprint(index)] = temp
+	}
+	return nil, inInterface
 }
 
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
@@ -658,11 +696,22 @@ func (site *Site) updateGridMeter() error {
 // updateMeter updates and publishes single meter
 func (site *Site) updateMeters() error {
 	// TODO parallelize once modbus supports that
-	site.updatePvMeters()
-	if err := site.updateBatteryMeters(); err != nil {
+	data := site.updatePvMeters()
+	var temp map[string]map[string]interface{}
+	var err error
+
+	if err, temp = site.updateBatteryMeters(); err != nil {
 		return err
 	}
-	site.updateLogMeters()
+	for k, v := range temp {
+		data[k] = v
+	}
+
+	temp = site.updateLogMeters()
+	for k, v := range temp {
+		data[k] = v
+	}
+	site.publish(keys.Meters, data)
 	return site.updateGridMeter()
 }
 

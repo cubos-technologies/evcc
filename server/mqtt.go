@@ -287,6 +287,8 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
+		case p.Key == "meters":
+			topic = fmt.Sprintf("%s/meters", m.root)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		}
