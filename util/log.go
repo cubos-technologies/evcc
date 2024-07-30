@@ -51,6 +51,28 @@ func newLogger(area string, lp int) *Logger {
 		return logger
 	}
 
+	// Öffne eine Datei für das Logging
+	/*
+		logFile, err := os.OpenFile("logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatalf("Fehler beim Öffnen der Logdatei: %v", err)
+		}
+	*/
+
+	// Definiere den Pfad zur Logdatei mit dem Unterordner "logs"
+	logFilePath := "logs/logfile.log"
+
+	// Stelle sicher, dass der Unterordner "logs" existiert
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		log.Fatalf("Fehler beim Erstellen des Logs-Ordners: %v", err)
+	}
+
+	// Öffne oder erstelle die Logdatei im Unterordner "logs"
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Fehler beim Öffnen der Logdatei: %v", err)
+	}
+
 	padded := area
 	for len(padded) < LogAreaPadding {
 		padded += " "
@@ -58,9 +80,13 @@ func newLogger(area string, lp int) *Logger {
 
 	level := logLevelForArea(area)
 	redactor := new(Redactor)
+
+	// MultiWriter erstellen, der sowohl in die Datei als auch an die Standardausgabe schreibt
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+
 	notepad := jww.NewNotepad(
 		level, jww.LevelTrace,
-		&redactWriter{os.Stdout, redactor}, &redactWriter{logstash.DefaultHandler, redactor},
+		&redactWriter{multiWriter, redactor}, &redactWriter{logstash.DefaultHandler, redactor},
 		padded, log.Ldate|log.Ltime)
 
 	logger := &Logger{
