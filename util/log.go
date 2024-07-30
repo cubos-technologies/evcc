@@ -51,14 +51,6 @@ func newLogger(area string, lp int) *Logger {
 		return logger
 	}
 
-	// Öffne eine Datei für das Logging
-	/*
-		logFile, err := os.OpenFile("logfile.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err != nil {
-			log.Fatalf("Fehler beim Öffnen der Logdatei: %v", err)
-		}
-	*/
-
 	// Definiere den Pfad zur Logdatei mit dem Unterordner "logs"
 	logFilePath := "logs/logfile.log"
 
