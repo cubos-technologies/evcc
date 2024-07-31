@@ -34,6 +34,7 @@ import (
 const standbyPower = 10 // consider less than 10W as charger in standby
 
 // updater abstracts the Loadpoint implementation for testing
+// Commenttest
 type updater interface {
 	loadpoint.API
 	Update(availablePower float64, autoCharge, batteryBuffered, batteryStart bool, greenShare float64, effectivePrice, effectiveCo2 *float64)
