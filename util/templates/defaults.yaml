@@ -289,6 +289,18 @@ params:
     help:
       en: The AIN is printed on the type label on the back of the device. Embed it in double quotes in case of leading zeroes.
       de: Die AIN ist auf dem Typenschild auf der Geräterückseite aufgedruckt. Bei führenden Nullen bitte in doppelte Hochkommata setzen.
+  - name: welcomecharge
+    type: bool
+    description:
+      en: Charge on connection
+      de: Laden bei Verbindung
+    help:
+      en: |
+        Charger will enable charging for short time when vehicle is connected, irrespective of configured charge mode. 
+        This is useful for vehicles that require power supply when connecting.
+      de: |
+        Wallbox gibt kurzzeitige Ladefreigabe bei Fahrzeugverbindung. Das ermöglicht es Fahrzeugen, die eine Stromversorgung beim Anschließen benötigen, 
+        einen Fehlerzustand zu vermeiden.
 
 presets:
   vehicle-base:
@@ -327,7 +339,7 @@ presets:
       - name: language
   tariff-base:
     params:
-      - name: costs
+      - name: charges
         type: number
         help:
           de: Zusätzlicher fester Aufschlag pro kWh (z.B. 0.05 für 5 Cent)
@@ -340,7 +352,11 @@ presets:
   eebus:
     params:
       - name: ski
+        help:
+          de: SKI (Subject Key Identifier)
+          en: SKI (Subject Key Identifier)
       - name: ip
+        deprecated: true
   switchsocket:
     params:
       - name: standbypower

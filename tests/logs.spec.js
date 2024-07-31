@@ -13,6 +13,7 @@ test.afterAll(async () => {
 async function login(page) {
   await page.locator("#loginPassword").fill("secret");
   await page.getByRole("button", { name: "Login" }).click();
+  await expect(page.locator("#loginPassword")).not.toBeVisible();
 }
 
 test.describe("opening logs", async () => {
@@ -46,6 +47,6 @@ test.describe("features", async () => {
   test("content", async ({ page }) => {
     await page.goto("/#/log");
     await login(page);
-    await expect(page.getByTestId("log-content")).toContainText("starting ui and api at");
+    await expect(page.getByTestId("log-content")).toContainText("listening at");
   });
 });
