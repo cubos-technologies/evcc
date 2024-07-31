@@ -608,9 +608,9 @@ func (site *Site) updateBatteryMeters() (error, []batteryMeasurement) {
 }
 
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
-func (site *Site) updateGridMeter() error {
+func (site *Site) updateGridMeter() (error, *meterMeasurement) {
 	if site.gridMeter == nil {
-		return nil
+		return nil, nil
 	}
 
 	if res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo()); err == nil {
@@ -618,7 +618,7 @@ func (site *Site) updateGridMeter() error {
 		site.log.DEBUG.Printf("grid meter: %.0fW", res)
 		site.publish(keys.GridPower, res)
 	} else {
-		return fmt.Errorf("grid meter: %v", err)
+		return fmt.Errorf("grid meter: %v", err), nil
 	}
 
 	// grid phase powers
@@ -645,16 +645,20 @@ func (site *Site) updateGridMeter() error {
 		}
 	}
 
+	var mm meterMeasurement
 	// grid energy (import)
 	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
 		if f, err := energyMeter.TotalEnergy(); err == nil {
+			mm.Energy = f
 			site.publish(keys.GridEnergy, f)
 		} else {
 			site.log.ERROR.Printf("grid energy: %v", err)
 		}
 	}
 
-	return nil
+	mm.Power = site.gridPower
+
+	return nil, &mm
 }
 
 // updateMeter updates and publishes single meter
@@ -664,25 +668,29 @@ func (site *Site) updateMeters() error {
 	data := make(map[string]interface{})
 
 	temp := site.updatePvMeters()
-	for _, k := range temp {
-		data["meter_"+fmt.Sprint(len(data))] = k
+	for index, k := range temp {
+		data[site.Meters.PVMetersRef[index]] = k
 	}
 
 	temp = site.updateLogMeters()
-	for _, k := range temp {
-		data["meter_"+fmt.Sprint(len(data))] = k
+	for index, k := range temp {
+		data[site.Meters.LogMetersRef[index]] = k
 	}
 
 	var tempbat []batteryMeasurement
 	if err, tempbat = site.updateBatteryMeters(); err != nil {
 		return err
 	}
-	for v, k := range tempbat {
-		data["battery_"+fmt.Sprint(v)] = k
+	for index, k := range tempbat {
+		data[site.Meters.BatteryMetersRef[index]] = k
+	}
+
+	if err, data[site.Meters.GridMeterRef] = site.updateGridMeter(); err != nil {
+		return err
 	}
 
 	site.publish(keys.Meters, data)
-	return site.updateGridMeter()
+	return nil
 }
 
 // sitePower returns
