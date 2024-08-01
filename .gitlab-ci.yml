@@ -52,6 +52,7 @@ build docker:
     GIT_SUBMODULE_STRATEGY: recursive
   before_script:
     # some debug logging
+    - docker info
     - echo "date -> `date`"
     - echo "building image"
     - >
