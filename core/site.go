@@ -62,6 +62,8 @@ type batteryMeasurement struct {
 	Controllable bool    `json:"controllable"`
 }
 
+type BatteryMeasurement = batteryMeasurement
+
 var _ site.API = (*Site)(nil)
 
 // Site is the main configuration container. A site can host multiple loadpoints.
