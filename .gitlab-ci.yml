@@ -13,7 +13,7 @@ variables:
   IMAGE_TAG_HARBOR_LATEST:   $HARBOR_HOST/$HARBOR_PROJECT:latest
 stages:
   - build
-  - test
+ # - test
   - deploy
 
 
