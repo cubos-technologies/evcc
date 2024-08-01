@@ -70,16 +70,7 @@ build docker:
     - docker push "$IMAGE_TAG_COMMIT"
 
 
-# simulate running tests (no tests in here yet)
-test:
-  stage: test
-  image: alpine:latest
-  variables:
-    # disable git clone
-    GIT_STRATEGY: none
-  script:
-    - echo "Tests not yet implemented."
-    - exit 0
+
 
 
 # deploy template. prefix '.' means that the job is not run by default.
