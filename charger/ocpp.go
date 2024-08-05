@@ -32,6 +32,7 @@ type OCPP struct {
 	remoteStart       bool
 	chargingRateUnit  types.ChargingRateUnitType
 	lp                loadpoint.API
+	bootNotification  *core.BootNotificationRequest
 }
 
 const defaultIdTag = "evcc" // RemoteStartTransaction only
@@ -90,12 +91,12 @@ func NewOCPPFromConfig(other map[string]interface{}) (api.Charger, error) {
 	}
 
 	var currentsG func() (float64, float64, float64, error)
-	if c.hasMeasurement(types.MeasurandCurrentImport + ".L3") {
+	if c.hasMeasurement(types.MeasurandCurrentImport) {
 		currentsG = c.currents
 	}
 
 	var voltagesG func() (float64, float64, float64, error)
-	if c.hasMeasurement(types.MeasurandVoltage + ".L3") {
+	if c.hasMeasurement(types.MeasurandVoltage) {
 		voltagesG = c.voltages
 	}
 
@@ -168,6 +169,12 @@ func NewOCPP(id string, connector int, idtag string,
 	// see who's there
 	if boot {
 		conn.TriggerMessageRequest(core.BootNotificationFeatureName)
+		select {
+		case <-time.After(timeout):
+			c.log.WARN.Printf("boot notification timeout")
+		case res := <-cp.BootNotificationRequest():
+			c.bootNotification = res
+		}
 	}
 
 	var (
@@ -278,6 +285,13 @@ func NewOCPP(id string, connector int, idtag string,
 	if c.hasMeasurement(types.MeasurandPowerActiveImport) || c.hasMeasurement(types.MeasurandEnergyActiveImportRegister) {
 		conn.TriggerMessageRequest(core.MeterValuesFeatureName)
 
+		// wait for meter values
+		select {
+		case <-time.After(timeout):
+			c.log.WARN.Println("meter value timeout")
+		case <-c.conn.MeterSampled():
+		}
+
 		if meterInterval > 0 && meterInterval != meterSampleInterval {
 			if err := c.configure(ocpp.KeyMeterValueSampleInterval, strconv.Itoa(int(meterInterval.Seconds()))); err != nil {
 				return nil, err
@@ -330,15 +344,7 @@ func (c *OCPP) configure(key, val string) error {
 
 // wait waits for a CP roundtrip with timeout
 func (c *OCPP) wait(err error, rc chan error) error {
-	if err == nil {
-		select {
-		case err = <-rc:
-			close(rc)
-		case <-time.After(c.timeout):
-			err = api.ErrTimeout
-		}
-	}
-	return err
+	return ocpp.Wait(err, rc, c.timeout)
 }
 
 // Status implements the api.Charger interface
@@ -446,6 +452,7 @@ func (c *OCPP) getCurrent() (float64, error) {
 	return current, err
 }
 
+// createTxDefaultChargingProfile returns a TxDefaultChargingProfile with given current
 func (c *OCPP) createTxDefaultChargingProfile(current float64) *types.ChargingProfile {
 	phases := c.phases
 	period := types.NewChargingSchedulePeriod(0, current)
@@ -466,11 +473,12 @@ func (c *OCPP) createTxDefaultChargingProfile(current float64) *types.ChargingPr
 	}
 
 	return &types.ChargingProfile{
-		ChargingProfileId:      0,
+		ChargingProfileId:      1,
 		StackLevel:             0,
 		ChargingProfilePurpose: types.ChargingProfilePurposeTxDefaultProfile,
-		ChargingProfileKind:    types.ChargingProfileKindRelative,
+		ChargingProfileKind:    types.ChargingProfileKindAbsolute,
 		ChargingSchedule: &types.ChargingSchedule{
+			StartSchedule:          types.Now(),
 			ChargingRateUnit:       c.chargingRateUnit,
 			ChargingSchedulePeriod: []types.ChargingSchedulePeriod{period},
 		},
@@ -535,6 +543,45 @@ var _ api.Identifier = (*OCPP)(nil)
 // Identify implements the api.Identifier interface
 func (c *OCPP) Identify() (string, error) {
 	return c.conn.IdTag(), nil
+}
+
+var _ api.Diagnosis = (*OCPP)(nil)
+
+// Diagnose implements the api.Diagnosis interface
+func (c *OCPP) Diagnose() {
+	fmt.Printf("\tCharge Point ID: %s\n", c.conn.ChargePoint().ID())
+
+	if c.bootNotification != nil {
+		fmt.Printf("\tBoot Notification:\n")
+		fmt.Printf("\t\tChargePointVendor: %s\n", c.bootNotification.ChargePointVendor)
+		fmt.Printf("\t\tChargePointModel: %s\n", c.bootNotification.ChargePointModel)
+		fmt.Printf("\t\tChargePointSerialNumber: %s\n", c.bootNotification.ChargePointSerialNumber)
+		fmt.Printf("\t\tFirmwareVersion: %s\n", c.bootNotification.FirmwareVersion)
+	}
+
+	fmt.Printf("\tConfiguration:\n")
+	rc := make(chan error, 1)
+	err := ocpp.Instance().GetConfiguration(c.conn.ChargePoint().ID(), func(resp *core.GetConfigurationConfirmation, err error) {
+		if err == nil {
+			// sort configuration keys for printing
+			slices.SortFunc(resp.ConfigurationKey, func(i, j core.ConfigurationKey) int {
+				return cmp.Compare(i.Key, j.Key)
+			})
+
+			rw := map[bool]string{false: "r/w", true: "r/o"}
+
+			for _, opt := range resp.ConfigurationKey {
+				if opt.Value == nil {
+					continue
+				}
+
+				fmt.Printf("\t\t%s (%s): %s\n", opt.Key, rw[opt.Readonly], *opt.Value)
+			}
+		}
+
+		rc <- err
+	}, nil)
+	c.wait(err, rc)
 }
 
 var _ loadpoint.Controller = (*OCPP)(nil)

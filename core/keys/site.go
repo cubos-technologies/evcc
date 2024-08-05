@@ -40,6 +40,8 @@ const (
 	// battery settings
 	BatteryCapacity                   = "batteryCapacity"
 	BatteryDischargeControl           = "batteryDischargeControl"
+	BatteryGridChargeLimit            = "batteryGridChargeLimit"
+	BatteryGridChargeActive           = "batteryGridChargeActive"
 	BufferSoc                         = "bufferSoc"
 	BufferStartSoc                    = "bufferStartSoc"
 	MaxGridSupplyWhileBatteryCharging = "maxGridSupplyWhileBatteryCharging"
