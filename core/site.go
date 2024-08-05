@@ -112,7 +112,7 @@ type MetersConfig struct {
 	GridMeterRef     string   `mapstructure:"grid"`    // Grid usage meter
 	PVMetersRef      []string `mapstructure:"pv"`      // PV meter
 	BatteryMetersRef []string `mapstructure:"battery"` // Battery charging meter
-	ExtMetersRef     []string `mapstructure:"ext"`     // Meters used only for logging
+	ExtMetersRef     []string `mapstructure:"ext"`     // Meters used only for monitoring
 	AuxMetersRef     []string `mapstructure:"aux"`     // Auxiliary meters
 }
 
@@ -490,7 +490,7 @@ func (site *Site) updatePvMeters() {
 	return
 }
 
-// updateExtMeters updates log meters. All measurements are optional.
+// updateExtMeters updates ext meters. All measurements are optional.
 func (site *Site) updateExtMeters() {
 	if len(site.extMeters) == 0 {
 		return
@@ -502,7 +502,7 @@ func (site *Site) updateExtMeters() {
 		// ext power
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err != nil {
-			site.log.ERROR.Printf("log meter %d power: %v", ref, err)
+			site.log.ERROR.Printf("ext meter %d power: %v", ref, err)
 		}
 
 		// ext energy
@@ -510,7 +510,7 @@ func (site *Site) updateExtMeters() {
 		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
 			energy, err = m.TotalEnergy()
 			if err != nil {
-				site.log.ERROR.Printf("log meter %d energy: %v", ref, err)
+				site.log.ERROR.Printf("ext meter %d energy: %v", ref, err)
 			}
 		}
 
