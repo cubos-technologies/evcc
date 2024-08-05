@@ -57,20 +57,19 @@ func NewModbusMbmdFromConfig(other map[string]interface{}) (api.Meter, error) {
 		cc.RTU = &b
 	}
 
-	conn, err := modbus.NewConnection(cc.URI, cc.Device, cc.Comset, cc.Baudrate, modbus.ProtocolFromRTU(cc.RTU), cc.ID)
+	modbus.Lock()
+	defer modbus.Unlock()
+
+	conn, err := modbus.NewConnection(cc.URI, cc.Device, cc.Comset, cc.Baudrate, cc.Settings.Protocol(), cc.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// set non-default delay
-	if cc.Delay > 0 {
-		conn.Delay(cc.Delay)
-	}
-
 	// set non-default timeout
-	if cc.Timeout > 0 {
-		conn.Timeout(cc.Timeout)
-	}
+	conn.Timeout(cc.Timeout)
+
+	// set non-default delay
+	conn.Delay(cc.Delay)
 
 	log := util.NewLogger("modbus")
 	conn.Logger(log.TRACE)
@@ -145,30 +144,27 @@ func NewModbusMbmdFromConfig(other map[string]interface{}) (api.Meter, error) {
 }
 
 func (m *ModbusMbmd) buildPhaseProviders(readings []string) (func() (float64, float64, float64, error), error) {
-	var res func() (float64, float64, float64, error)
-	if len(readings) > 0 {
-		if len(readings) != 3 {
-			return nil, errors.New("need one per phase, total three")
-		}
-
-		phases := make([]func() (float64, error), 0, 3)
-		for idx, reading := range readings {
-			opCurrent, err := modbus.ParseOperation(m.device, reading)
-			if err != nil {
-				return nil, fmt.Errorf("invalid measurement [%d]: %s", idx, reading)
-			}
-
-			c := func() (float64, error) {
-				return m.floatGetter(opCurrent)
-			}
-
-			phases = append(phases, c)
-		}
-
-		res = collectPhaseProviders(phases)
+	if len(readings) == 0 {
+		return nil, nil
 	}
 
-	return res, nil
+	if len(readings) != 3 {
+		return nil, errors.New("need one per phase, total three")
+	}
+
+	var phases [3]func() (float64, error)
+	for idx, reading := range readings {
+		opCurrent, err := modbus.ParseOperation(m.device, reading)
+		if err != nil {
+			return nil, fmt.Errorf("invalid measurement [%d]: %s", idx, reading)
+		}
+
+		phases[idx] = func() (float64, error) {
+			return m.floatGetter(opCurrent)
+		}
+	}
+
+	return collectPhaseProviders(phases), nil
 }
 
 // floatGetter executes configured modbus read operation and implements func() (float64, error)

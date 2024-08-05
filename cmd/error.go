@@ -10,6 +10,7 @@ type Class int
 //go:generate enumer -type Class -trimprefix Class -transform=lower -text
 const (
 	_ Class = iota
+	ClassConfigFile
 	ClassMeter
 	ClassCharger
 	ClassVehicle
@@ -27,6 +28,27 @@ const (
 	ClassMessenger
 	ClassSponsorship
 )
+
+// FatalError is an error that can be marshaled
+type FatalError struct {
+	err error
+}
+
+func (e *FatalError) Error() string {
+	return e.err.Error()
+}
+
+func (e FatalError) MarshalJSON() ([]byte, error) {
+	if je, ok := e.err.(json.Marshaler); ok {
+		return je.MarshalJSON()
+	}
+
+	return json.Marshal(struct {
+		Error string `json:"error"`
+	}{
+		Error: e.err.Error(),
+	})
+}
 
 // DeviceError indicates the specific device that failed
 type DeviceError struct {
