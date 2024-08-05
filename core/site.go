@@ -437,9 +437,9 @@ func (site *Site) publishDelta(key string, val interface{}) {
 }
 
 // updatePvMeters updates pv meters. All measurements are optional.
-func (site *Site) updatePvMeters() map[string]meterMeasurement {
+func (site *Site) updatePvMeters() {
 	if len(site.pvMeters) == 0 {
-		return nil
+		return
 	}
 
 	var totalEnergy float64
@@ -485,13 +485,13 @@ func (site *Site) updatePvMeters() map[string]meterMeasurement {
 
 	site.publish(keys.Meters, mm)
 
-	return mm
+	return
 }
 
 // updateLogMeters updates log meters. All measurements are optional.
-func (site *Site) updateLogMeters() map[string]meterMeasurement {
+func (site *Site) updateLogMeters() {
 	if len(site.logMeters) == 0 {
-		return nil
+		return
 	}
 
 	mm := make(map[string]meterMeasurement, len(site.logMeters))
@@ -519,13 +519,13 @@ func (site *Site) updateLogMeters() map[string]meterMeasurement {
 	}
 	site.publish(keys.Meters, mm)
 
-	return mm
+	return
 }
 
 // updateBatteryMeters updates battery meters. Power is retried, other measurements are optional.
-func (site *Site) updateBatteryMeters() (error, map[string]batteryMeasurement) {
+func (site *Site) updateBatteryMeters() error {
 	if len(site.batteryMeters) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var totalCapacity, totalEnergy float64
@@ -539,7 +539,7 @@ func (site *Site) updateBatteryMeters() (error, map[string]batteryMeasurement) {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err != nil {
 			// power is required- return on error
-			return fmt.Errorf("battery %s power: %v", ref, err), nil
+			return fmt.Errorf("battery %s power: %v", ref, err)
 		}
 
 		site.batteryPower += power
@@ -610,13 +610,13 @@ func (site *Site) updateBatteryMeters() (error, map[string]batteryMeasurement) {
 
 	site.publish(keys.Meters, mm)
 
-	return nil, mm
+	return nil
 }
 
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
-func (site *Site) updateGridMeter() (error, *meterMeasurement) {
+func (site *Site) updateGridMeter() error {
 	if site.gridMeter == nil {
-		return nil, nil
+		return nil
 	}
 
 	if res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo()); err == nil {
@@ -624,7 +624,7 @@ func (site *Site) updateGridMeter() (error, *meterMeasurement) {
 		site.log.DEBUG.Printf("grid meter: %.0fW", res)
 		site.publish(keys.GridPower, res)
 	} else {
-		return fmt.Errorf("grid meter: %v", err), nil
+		return fmt.Errorf("grid meter: %v", err)
 	}
 
 	// grid phase currents (signed)
@@ -664,40 +664,29 @@ func (site *Site) updateGridMeter() (error, *meterMeasurement) {
 
 	mm.Power = site.gridPower
 
-	site.publish(keys.Meters, mm)
+	pubmm := make(map[string]meterMeasurement)
+	pubmm[site.Meters.GridMeterRef] = mm
+	site.publish(keys.Meters, pubmm)
 
-	return nil, &mm
+	return nil
 }
 
 // updateMeter updates and publishes single meter
 func (site *Site) updateMeters() error {
 	// TODO parallelize once modbus supports thatt
 	var err error
-	data := make(map[string]interface{})
 
-	temp := site.updatePvMeters()
-	for index, k := range temp {
-		data[index] = k
-	}
+	site.updatePvMeters()
 
-	temp = site.updateLogMeters()
-	for index, k := range temp {
-		data[index] = k
-	}
+	site.updateLogMeters()
 
-	tempbat := make(map[string]batteryMeasurement)
-	if err, tempbat = site.updateBatteryMeters(); err != nil {
-		return err
-	}
-	for index, k := range tempbat {
-		data[index] = k
-	}
-
-	if err, data[site.Meters.GridMeterRef] = site.updateGridMeter(); err != nil {
+	if err = site.updateBatteryMeters(); err != nil {
 		return err
 	}
 
-	// site.publish(keys.Meters, data)
+	if err = site.updateGridMeter(); err != nil {
+		return err
+	}
 	return nil
 }
 
