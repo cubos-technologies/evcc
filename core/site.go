@@ -82,8 +82,8 @@ type Site struct {
 	gridMeter     map[string]api.Meter // Grid usage meter
 	pvMeters      map[string]api.Meter // PV generation meters
 	batteryMeters map[string]api.Meter // Battery charging meters
+	extMeters     map[string]api.Meter // External meters - for monitoring only
 	auxMeters     map[string]api.Meter // Auxiliary meters
-	extMeters     map[string]api.Meter // Meters used only for logging
 
 	// battery settings
 	prioritySoc             float64 // prefer battery up to this Soc
@@ -213,7 +213,7 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		site.log.WARN.Println("battery configured but residualPower is missing or <= 0 (add residualPower: 100 to site), see https://docs.evcc.io/en/docs/reference/configuration/site#residualpower")
 	}
 
-	//Meters used only for monitoring
+	// Meters used only for monitoring
 	site.extMeters = make(map[string]api.Meter)
 	for _, ref := range site.Meters.ExtMetersRef {
 		dev, err := config.Meters().ByName(ref)
