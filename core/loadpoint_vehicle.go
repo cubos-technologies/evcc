@@ -95,8 +95,11 @@ func (lp *Loadpoint) selectVehicleByID(id string) api.Vehicle {
 			}
 		}
 	}
+	if strings.EqualFold(id, "default") {
+		return nil
+	}
 
-	return nil
+	return lp.selectVehicleByID("default")
 }
 
 // setActiveVehicle assigns currently active vehicle, configures soc estimator
