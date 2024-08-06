@@ -181,48 +181,24 @@ func (m *MQTT) Listen(site site.API) error {
 
 func (m *MQTT) listenConfig(topic string, site site.API) error {
 	for _, s := range []setterWithTopic{
-		{"/meter/+/config", func(payload string, full_topic string) error {
-			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
+		{"/energymeter/+/config", func(payload string, full_topic string) error {
+			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
 			return nil
 		}},
-		{"/vehicle/+/config", func(payload string, full_topic string) error {
-			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
+		{"/user/+/config", func(payload string, full_topic string) error {
+			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
 			return nil
 		}},
-		{"/charger/+/config", func(payload string, full_topic string) error {
-			if err := MQTTupdateDeviceHandler(payload, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
-				m.publish(errorTopic, false, err.Error())
-				return err
-			}
-			return nil
-		}},
-		{"/meter/+/remove", func(payload string, full_topic string) error {
-			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
-				m.publish(errorTopic, false, err.Error())
-				return err
-			}
-			return nil
-		}},
-		{"/charger/+/remove", func(payload string, full_topic string) error {
-			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
-				m.publish(errorTopic, false, err.Error())
-				return err
-			}
-			return nil
-		}},
-		{"/vehicle/+/remove", func(payload string, full_topic string) error {
-			if err := MQTTdeleteDeviceHandler(payload, site, full_topic); err != nil {
+		{"/chargepoint/+/config", func(payload string, full_topic string) error {
+			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err
