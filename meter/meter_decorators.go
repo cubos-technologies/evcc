@@ -67,6 +67,18 @@ func decorateMeter(base api.Meter, meterEnergy func() (float64, error), phaseCur
 		}
 	}
 
+	if batteryController != nil {
+		result = struct {
+			api.Meter
+			api.BatteryController
+		}{
+			Meter: result,
+			BatteryController: &decorateMeterBatteryControllerImpl{
+				batteryController: batteryController,
+			},
+		}
+	}
+
 	if batteryCapacity != nil {
 		result = struct {
 			api.Meter
@@ -79,16 +91,14 @@ func decorateMeter(base api.Meter, meterEnergy func() (float64, error), phaseCur
 		}
 	}
 
-	if batteryController != nil {
-		result = struct {
-			api.Meter
-			api.BatteryController
-		}{
-			Meter: result,
-			BatteryController: &decorateMeterBatteryControllerImpl{
-				batteryController: batteryController,
-			},
-		}
+	result = struct {
+		api.Meter
+		api.Battery
+	}{
+		Meter: result,
+		Battery: &decorateMeterBatteryImpl{
+			battery: battery,
+		},
 	}
 
 	return result
