@@ -182,7 +182,12 @@ func (m *MQTT) Listen(site site.API) error {
 func (m *MQTT) listenConfig(topic string, site site.API) error {
 	for _, s := range []setterWithTopic{
 		{"/energymeter/+/config", func(payload string, full_topic string) error {
-			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			if err := json.NewDecoder(msg).Decode(&req); err != nil {
+				return err
+			}
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err
@@ -190,15 +195,48 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 			return nil
 		}},
 		{"/user/+/config", func(payload string, full_topic string) error {
-			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			if err := json.NewDecoder(msg).Decode(&req); err != nil {
+				return err
+			}
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
 			return nil
 		}},
+		{"/users", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req2 []map[string]any
+			if err := json.NewDecoder(msg).Decode(&req2); err != nil {
+				return err
+			}
+			for _, req := range req2 {
+				if err := MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+req["cubos_id"].(string)+"/config/set"); err != nil {
+					errorTopic := full_topic[:len(full_topic)-3] + "error"
+					m.publish(errorTopic, false, err.Error())
+					//return err
+				}
+			}
+			return nil
+		}},
+		{"/user/default", func(payload string, full_topic string) error {
+			//TODO
+			return nil
+		}},
+		{"/config", func(payload string, full_topic string) error {
+			//TODO
+			return nil
+		}},
 		{"/chargepoint/+/config", func(payload string, full_topic string) error {
-			if err := MQTTConfigHandler(payload, site, full_topic); err != nil {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			if err := json.NewDecoder(msg).Decode(&req); err != nil {
+				return err
+			}
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
 				return err

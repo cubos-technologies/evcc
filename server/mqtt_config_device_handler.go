@@ -228,7 +228,7 @@ func MQTTvalidateRefs(refs []string) error {
 	}
 	return nil
 }
-func MQTTConfigHandler(payload string, site site.API, topic string) error {
+func MQTTConfigHandler(req map[string]any, site site.API, topic string) error {
 	classstr := strings.Split(topic, "/")
 	var class templates.Class
 	switch classstr[len(classstr)-4] {
@@ -238,17 +238,16 @@ func MQTTConfigHandler(payload string, site site.API, topic string) error {
 		class, _ = templates.ClassString("Charger")
 	case "user":
 		class, _ = templates.ClassString("Vehicle")
+	case "users":
+		class, _ = templates.ClassString("Vehicle")
 	}
-
-	msg := strings.NewReader(payload)
-	var req map[string]any
 	var id int
 	var err error
-	if err := json.NewDecoder(msg).Decode(&req); err != nil {
-		return err
-	}
+
 	cubosid := classstr[len(classstr)-3]
-	if payloadid, found := req["cubos_id"]; found {
+	var found bool
+	var payloadid any
+	if payloadid, found = req["cubos_id"]; found {
 		if payloadid != cubosid && len(req) != 0 {
 			return errors.New("id in the payload doesnt match id in the topic")
 		}
@@ -260,7 +259,7 @@ func MQTTConfigHandler(payload string, site site.API, topic string) error {
 		err = MQTTnewDeviceHandler(req, class, site)
 		return err
 	}
-	if len(req) == 0 {
+	if len(req) == 0 || len(req) == 1 && found {
 		err = MQTTdeleteDeviceHandler(id, site, class)
 		return err
 	}
