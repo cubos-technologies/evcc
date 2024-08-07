@@ -210,20 +210,34 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		{"/users", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req2 []map[string]any
+			var err error
 			if err := json.NewDecoder(msg).Decode(&req2); err != nil {
 				return err
 			}
 			for _, req := range req2 {
-				if err := MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+req["cubos_id"].(string)+"/config/set"); err != nil {
+				if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+req["cubos_id"].(string)+"/config/set"); err != nil {
 					errorTopic := full_topic[:len(full_topic)-3] + "error"
 					m.publish(errorTopic, false, err.Error())
 					//return err
 				}
 			}
-			return nil
+			return err
 		}},
 		{"/user/default", func(payload string, full_topic string) error {
-			//TODO
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			if err := json.NewDecoder(msg).Decode(&req); err != nil {
+				return err
+			}
+			req["cubos_id"] = "default"
+			req["template"] = "offline"
+			req["title"] = "Standardfahrzeug"
+			req["identifiers"] = "[default]"
+			if err := MQTTConfigHandler(req, site, full_topic+"/set"); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
 			return nil
 		}},
 		{"/config", func(payload string, full_topic string) error {
