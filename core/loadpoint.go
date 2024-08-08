@@ -184,6 +184,8 @@ type Loadpoint struct {
 	settings *Settings
 
 	tasks *util.Queue[Task] // tasks to be executed
+
+	isUpdated bool
 }
 
 // NewLoadpointFromConfig creates a new loadpoint
@@ -1631,8 +1633,11 @@ func (lp *Loadpoint) phaseSwitchCompleted() bool {
 	return time.Since(lp.phasesSwitched) > phaseSwitchDuration
 }
 
-// Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool, smartCostNextStart time.Time, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64) {
+// GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
+func (lp *Loadpoint) GetDataFromLoadpoint(sitePower float64, smartCostActive bool, smartCostNextStart time.Time, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64) {
+	lp.isUpdated = false
+	lp.UpdateChargePowerAndCurrents()
+
 	lp.publish(keys.SmartCostActive, smartCostActive)
 	lp.publish(keys.SmartCostNextStart, smartCostNextStart)
 	lp.processTasks()
@@ -1682,7 +1687,30 @@ func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool, smartCostNe
 		lp.log.ERROR.Println(err)
 		return
 	}
+}
 
+func (lp *Loadpoint) getID() int {
+	lp.RLock()
+	defer lp.RUnlock()
+	return 1
+}
+
+func (lp *Loadpoint) IsUpdated() bool {
+	lp.RLock()
+	defer lp.RUnlock()
+	return lp.isUpdated
+}
+
+// Update is the main control function. It reevaluates meters and charger state
+func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool) {
+
+	// read and publish status
+	welcomeCharge, err := lp.updateChargerStatus()
+	if err != nil {
+		lp.log.ERROR.Println(err)
+		lp.isUpdated = true
+		return
+	}
 	// track if remote disabled is actually active
 	remoteDisabled := loadpoint.RemoteEnable
 
@@ -1740,8 +1768,8 @@ func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool, smartCostNe
 			break
 		}
 
-		targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryBuffered, batteryStart)
-
+		//targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryBuffered, batteryStart)
+		targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()
 		}
@@ -1776,4 +1804,5 @@ func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool, smartCostNe
 	if err != nil {
 		lp.log.ERROR.Println(err)
 	}
+	lp.isUpdated = true
 }

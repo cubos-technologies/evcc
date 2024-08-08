@@ -38,7 +38,7 @@ const standbyPower = 10 // consider less than 10W as charger in standby
 // Commenttest
 type updater interface {
 	loadpoint.API
-	Update(availablePower float64, smartCostActive bool, smartCostNextStart time.Time, batteryBuffered, batteryStart bool, greenShare float64, effectivePrice, effectiveCo2 *float64)
+	Update(availablePower float64, smartCostActive bool)
 }
 
 // meterMeasurement is used as slice element for publishing structured data
@@ -105,6 +105,12 @@ type Site struct {
 	batteryMode  api.BatteryMode // Battery mode (runtime only, not persisted)
 
 	publishCache map[string]any // store last published values to avoid unnecessary republishing
+
+	newDataforLoadpoint []bool    //TODO Comments
+	PowerForLoadpoint   []float64 //TODO Map
+	prevError           float64
+	freePower_pid       float64
+	maxPrio             int
 }
 
 // MetersConfig contains the site's meter configuration
@@ -130,6 +136,7 @@ func NewSiteFromConfig(other map[string]interface{}) (*Site, error) {
 	// TODO title
 	Voltage = site.Voltage
 
+	site.maxPrio = 10
 	return site, nil
 }
 
@@ -766,7 +773,167 @@ func (site *Site) publishTariffs(greenShareHome float64, greenShareLoadpoints fl
 	}
 }
 
-func (site *Site) update(lp updater) {
+// Todo Threads for Meters and Comment Functions
+func (site *Site) updateEnergyMeters() error {
+	if err := site.updateMeters(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Todo Comment Function
+// Todo Loadpoint selsction with map // Mutex
+func (site *Site) CalculateValues() {
+	// Todo rework naming of Variables
+	var maxPowerLoadpoints_prio []float64
+	var minCurrentCharpoints_Prio []float64
+	var count_Loadpoints_Prio []int
+	var minPowerPVCharpoints_Prio []float64
+	totalChargePower := 0.0
+	count_Loadpoints := 0
+	count_active_Loadpoints := 0
+	sumMinCurrent := 0.0
+	maxCurrentCharpoints := 0.0
+	gridPower := site.gridPower
+	pvPower := max(0, site.pvPower)
+	batteryPower := site.batteryPower
+	sumFlexCurrent := 0.0
+	sumSetCurrents := 0.0
+	for i := 0; i < count_Loadpoints; i++ {
+		sumSetCurrents += site.PowerForLoadpoint[i]
+	}
+	//TODO Batterypower neu berechnen
+	if batteryPower > 0 {
+		if site.batterySoc < site.prioritySoc {
+			batteryPower = -batteryPower
+		} else if site.batterySoc < site.bufferStartSoc {
+			batteryPower = 0
+		}
+	} else {
+		batteryPower = 0
+	}
+	for _, lp := range site.loadpoints {
+		lpChargePower := lp.GetChargePower()
+		totalChargePower += lpChargePower
+		chargerStatus := lp.GetStatus()
+		count_Loadpoints++
+		if chargerStatus == api.StatusB || chargerStatus == api.StatusC {
+			count_active_Loadpoints++
+			chargerMode := lp.GetMode()
+			prio := lp.EffectivePriority()
+			if chargerMode == api.ModePV {
+				sumFlexCurrent += lpChargePower
+				maxCurrentCharpoints += lp.GetMaxPower()
+				maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
+				count_Loadpoints_Prio[prio]++
+				minPowerPVCharpoints_Prio[prio] += lp.GetMinPower()
+			} else if chargerMode == api.ModeMinPV {
+				count_Loadpoints_Prio[prio]++
+				sumFlexCurrent += lpChargePower - lp.GetMinPower()
+				sumMinCurrent += lp.GetMinPower()
+				maxCurrentCharpoints += lp.GetMaxPower()
+				maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
+				minCurrentCharpoints_Prio[prio] += lp.GetMinPower()
+				site.PowerForLoadpoint[lp.getID()] = lp.GetMinPower()
+			} else if chargerMode == api.ModeNow {
+				site.PowerForLoadpoint[lp.getID()] = lp.GetMaxPower()
+				sumMinCurrent += lpChargePower
+				maxCurrentCharpoints += lp.GetMaxPower()
+			} else if chargerMode == api.ModeOff {
+				site.PowerForLoadpoint[lp.getID()] = 0
+			}
+		} else {
+			sumFlexCurrent += 0
+			site.PowerForLoadpoint[lp.getID()] = 0
+		}
+		site.prioritizer.UpdateChargePowerFlexibility(lp)
+	}
+	homePower := pvPower - totalChargePower + batteryPower + gridPower
+	sumMinCurrent += homePower
+	// Calc Setpoint
+	setpoint := 0.0
+	if (sumFlexCurrent+sumMinCurrent) <= pvPower && maxCurrentCharpoints == sumSetCurrents {
+		setpoint = pvPower - sumFlexCurrent
+	} else {
+		if sumMinCurrent <= pvPower { // Mittlerer Bereich
+			setpoint = sumMinCurrent
+		} else { // linker Bereich
+			setpoint = pvPower
+		}
+	}
+	// PID Controller
+	KP := 0.0
+	KI := 0.031
+	KD := 0.0
+	error_pid := -pvPower + setpoint + sumFlexCurrent
+	derivative := error_pid - site.prevError
+	integral := KI*error_pid + site.freePower_pid
+	site.freePower_pid = KP*error_pid + integral + KD*derivative
+	site.prevError = error_pid
+	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
+	freePower := site.freePower_pid
+	for j := site.maxPrio; j > 0; j-- {
+		power_for_Loadpoint := 0.0
+		if freePower > maxPowerLoadpoints_prio[j] {
+			for _, lp := range site.loadpoints {
+				chargerMode := lp.GetMode()
+				if lp.EffectivePriority() == j && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) {
+					power_for_Loadpoint = lp.GetMaxPower()
+					site.PowerForLoadpoint[lp.getID()] = power_for_Loadpoint
+					freePower -= power_for_Loadpoint
+				}
+			}
+		} else if freePower > minPowerPVCharpoints_Prio[j] {
+			power_for_Loadpoint := (freePower + minCurrentCharpoints_Prio[j]) / float64(count_Loadpoints_Prio[j])
+			for _, lp := range site.loadpoints {
+				chargerMode := lp.GetMode()
+				if lp.EffectivePriority() == j {
+					if chargerMode == api.ModeMinPV {
+						site.PowerForLoadpoint[lp.getID()] += (power_for_Loadpoint - lp.GetMinPower())
+						freePower -= (power_for_Loadpoint - lp.GetMinPower())
+					} else if chargerMode == api.ModePV {
+						site.PowerForLoadpoint[lp.getID()] += power_for_Loadpoint
+						freePower -= power_for_Loadpoint
+					}
+
+				}
+			}
+		} else {
+			for _, lp := range site.loadpoints {
+				chargerMode := lp.GetMode()
+				if lp.EffectivePriority() == j {
+					if chargerMode == api.ModePV {
+						if freePower > lp.GetMinPower() {
+							power_for_Loadpoint = lp.GetMinPower()
+						} else {
+							power_for_Loadpoint = 0
+						}
+						site.PowerForLoadpoint[lp.getID()] += power_for_Loadpoint
+						freePower -= power_for_Loadpoint
+					}
+				}
+			}
+		}
+	}
+}
+
+func (site *Site) update_Loadpoint(lp *Loadpoint) {
+	lp.GetDataFromLoadpoint()
+	if site.newDataforLoadpoint[lp.getID()] {
+		lp.Update(site.PowerForLoadpoint[lp.getID()], true)
+	}
+}
+
+// Function to Start Threads for all Loadpoints to Update
+func (site *Site) update_all_Loadpoints() {
+	for _, lp := range site.loadpoints {
+		if lp.IsUpdated() {
+			go site.update_Loadpoint(lp)
+		}
+	}
+}
+
+func (site *Site) update_single_Loadpoint(lp updater) {
 	site.log.DEBUG.Println("----")
 
 	// update all loadpoint's charge power
@@ -936,15 +1103,24 @@ func (site *Site) Run(stopC chan struct{}, interval time.Duration) {
 	loadpointChan := make(chan updater)
 	go site.loopLoadpoints(loadpointChan)
 
-	ticker := time.NewTicker(interval)
-	site.update(<-loadpointChan) // start immediately
+	ticker_UpdateLoadpoint := time.NewTicker(interval)
+	ticker_CalculateValues := time.NewTicker(interval)
+	ticker_UpdateMeters := time.NewTicker(interval)
+	// start immediately
+	site.updateEnergyMeters()
+	site.CalculateValues()
+	site.update_all_Loadpoints()
 
 	for {
 		select {
-		case <-ticker.C:
-			site.update(<-loadpointChan)
+		case <-ticker_UpdateLoadpoint.C:
+			site.update_all_Loadpoints()
+		case <-ticker_CalculateValues.C:
+			go site.CalculateValues()
+		case <-ticker_UpdateMeters.C:
+			go site.updateEnergyMeters()
 		case lp := <-site.lpUpdateChan:
-			site.update(lp)
+			site.update_single_Loadpoint(lp)
 		case <-stopC:
 			return
 		}
