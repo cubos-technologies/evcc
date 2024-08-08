@@ -251,6 +251,8 @@ func MQTTConfigHandler(req map[string]any, site site.API, topic string) error {
 		if payloadid != cubosid && len(req) != 0 {
 			return errors.New("id in the payload doesnt match id in the topic")
 		}
+	} else if len(req) != 0 {
+		req["cubos_id"] = cubosid
 	}
 
 	id, err = CubosIdToId(cubosid, class)
@@ -341,13 +343,13 @@ func MQTTnewLoadpointHandler(payload string) error {
 	if err != nil {
 		return err
 	}
-	//not yet saving "dynamic" data in db
-	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
+	conf, err := config.AddConfig(templates.Loadpoint, "", static)
+	if err != nil {
 		return err
 	}
 
-	conf, err := config.AddConfig(templates.Loadpoint, "", static)
-	if err != nil {
+	//TODO saving "dynamic" data in db
+	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
 		return err
 	}
 
@@ -377,8 +379,10 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 		if err = deleteDevice(id, config.Meters()); err != nil {
 			return err
 		}
-		if usage, found := conf["usage"].(string); found {
-			err = MQTTupdateRef(usage, class, config.NameForID(id), true, site)
+		if configuration, found := conf["config"].(map[string]any); found {
+			if usage, found2 := configuration["usage"].(string); found2 {
+				err = MQTTupdateRef(usage, class, config.NameForID(id), true, site)
+			}
 		}
 	case templates.Vehicle:
 		if err = deleteDevice(id, config.Vehicles()); err != nil {

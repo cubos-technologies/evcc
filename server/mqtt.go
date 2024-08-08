@@ -184,9 +184,7 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		{"/energymeter/+/config", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
-			if err := json.NewDecoder(msg).Decode(&req); err != nil {
-				return err
-			}
+			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
@@ -197,9 +195,7 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		{"/user/+/config", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
-			if err := json.NewDecoder(msg).Decode(&req); err != nil {
-				return err
-			}
+			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())
@@ -209,13 +205,11 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		}},
 		{"/users", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
-			var req2 []map[string]any
+			var req2 map[string]map[string]any //want to change to map[string]map[string]any
 			var err error
-			if err := json.NewDecoder(msg).Decode(&req2); err != nil {
-				return err
-			}
-			for _, req := range req2 {
-				if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+req["cubos_id"].(string)+"/config/set"); err != nil {
+			json.NewDecoder(msg).Decode(&req2)
+			for cubos_id, req := range req2 {
+				if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
 					errorTopic := full_topic[:len(full_topic)-3] + "error"
 					m.publish(errorTopic, false, err.Error())
 					//return err
@@ -226,9 +220,7 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		{"/user/default", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
-			if err := json.NewDecoder(msg).Decode(&req); err != nil {
-				return err
-			}
+			json.NewDecoder(msg).Decode(&req)
 			req["cubos_id"] = "default"
 			req["template"] = "offline"
 			req["title"] = "Standardfahrzeug"
@@ -247,9 +239,7 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 		{"/chargepoint/+/config", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
-			if err := json.NewDecoder(msg).Decode(&req); err != nil {
-				return err
-			}
+			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic[:len(full_topic)-3] + "error"
 				m.publish(errorTopic, false, err.Error())

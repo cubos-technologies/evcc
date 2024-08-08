@@ -190,9 +190,9 @@ func (m *Client) ListenSetterWithTopic(topic string, callback func(string, strin
 			m.log.ERROR.Printf("set %s: %v", full_topic, err)
 			return
 		}
-		if err := m.Publish(full_topic, true, ""); err != nil {
-			m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
-		}
+		// if err := m.Publish(full_topic, true, ""); err != nil { //take out ?
+		// 	m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
+		// }
 	})
 	return err
 }
@@ -203,15 +203,15 @@ func (m *Client) listen(topic string) paho.Token {
 		payload := string(msg.Payload())
 		m.log.TRACE.Printf("recv %s: '%v'", topic, payload)
 		m.log.TRACE.Printf("full topic: '%s'", string(msg.Topic()))
-		if len(payload) > 0 {
-			m.mux.Lock()
-			callbacks := m.listener[topic]
-			m.mux.Unlock()
+		//if len(payload) > 0 {
+		m.mux.Lock()
+		callbacks := m.listener[topic]
+		m.mux.Unlock()
 
-			for _, cb := range callbacks {
-				cb(payload, msg.Topic())
-			}
+		for _, cb := range callbacks {
+			cb(payload, msg.Topic())
 		}
+		//}
 	})
 	return token
 }
