@@ -106,11 +106,13 @@ type Site struct {
 
 	publishCache map[string]any // store last published values to avoid unnecessary republishing
 
-	newDataforLoadpoint []bool    //TODO Comments
-	PowerForLoadpoint   []float64 //TODO Map
-	prevError           float64
-	freePower_pid       float64
-	maxPrio             int
+	newDataforLoadpoint  []bool    //TODO Comments
+	PowerForLoadpoint    []float64 //TODO Map
+	prevError            float64
+	freePower_pid        float64
+	maxPrio              int
+	greenShareLoadpoints float64
+	greenShareHome       float64
 }
 
 // MetersConfig contains the site's meter configuration
@@ -803,15 +805,19 @@ func (site *Site) CalculateValues() {
 		sumSetCurrents += site.PowerForLoadpoint[i]
 	}
 	//TODO Batterypower neu berechnen
-	if batteryPower > 0 {
-		if site.batterySoc < site.prioritySoc {
-			batteryPower = -batteryPower
-		} else if site.batterySoc < site.bufferStartSoc {
-			batteryPower = 0
+	// Get Batterypower
+	if site.batterySoc < site.prioritySoc {
+		if batteryPower < 0 {
+			sumMinCurrent -= batteryPower
+		} else if batteryPower > 0 {
+			sumMinCurrent += batteryPower
 		}
-	} else {
+	} else if site.batterySoc < site.bufferStartSoc {
 		batteryPower = 0
+	} else if site.batterySoc > site.bufferStartSoc {
+
 	}
+	// Get Data from all Loadpoints
 	for _, lp := range site.loadpoints {
 		lpChargePower := lp.GetChargePower()
 		totalChargePower += lpChargePower
@@ -848,8 +854,32 @@ func (site *Site) CalculateValues() {
 		}
 		site.prioritizer.UpdateChargePowerFlexibility(lp)
 	}
+	//
+	if site.gridMeter == nil {
+		site.gridPower = totalChargePower - site.pvPower
+		site.publish(keys.GridPower, site.gridPower)
+	}
+	//
+	if site.pvMeters == nil {
+		site.pvPower = totalChargePower - site.gridPower + site.GetResidualPower()
+		if site.pvPower < 0 {
+			site.pvPower = 0
+		}
+		site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
+		site.publish(keys.PvPower, site.pvPower)
+	}
+	//
 	homePower := pvPower - totalChargePower + batteryPower + gridPower
 	sumMinCurrent += homePower
+
+	// add battery charging power to homePower to ignore all consumption which does not occur on loadpoints
+	// fix for: https://github.com/evcc-io/evcc/issues/11032
+	nonChargePower := homePower + max(0, -site.batteryPower)
+	site.greenShareHome = site.greenShare(0, homePower)
+	site.greenShareLoadpoints = site.greenShare(nonChargePower, nonChargePower+totalChargePower)
+	for _, lp := range site.loadpoints {
+		lp.SetEnvironment(site.greenShareLoadpoints, site.effectivePrice(site.greenShareLoadpoints), site.effectiveCo2(site.greenShareLoadpoints))
+	}
 	// Calc Setpoint
 	setpoint := 0.0
 	if (sumFlexCurrent+sumMinCurrent) <= pvPower && maxCurrentCharpoints == sumSetCurrents {
@@ -870,6 +900,33 @@ func (site *Site) CalculateValues() {
 	integral := KI*error_pid + site.freePower_pid
 	site.freePower_pid = KP*error_pid + integral + KD*derivative
 	site.prevError = error_pid
+
+	//TODO Circuits
+	// update all circuits' power and currents
+	if site.circuit != nil {
+		if err := site.circuit.Update(site.loadpointsAsCircuitDevices()); err != nil {
+			site.log.ERROR.Println(err)
+		}
+
+		site.publishCircuits()
+	}
+	//TODO Smartcost
+	var smartCostActive bool
+	if rate, err := site.plannerRate(); err == nil {
+		smartCostActive = site.smartCostActive(lp, rate)
+	} else {
+		site.log.WARN.Println("smartCostActive:", err)
+	}
+
+	var smartCostNextStart time.Time
+	if !smartCostActive {
+		if rates, err := site.plannerRates(); err == nil {
+			smartCostNextStart = site.smartCostNextStart(lp, rates)
+		} else {
+			site.log.WARN.Println("smartCostNextStart:", err)
+		}
+	}
+
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
 	freePower := site.freePower_pid
 	for j := site.maxPrio; j > 0; j-- {
@@ -920,7 +977,7 @@ func (site *Site) CalculateValues() {
 func (site *Site) update_Loadpoint(lp *Loadpoint) {
 	lp.GetDataFromLoadpoint()
 	if site.newDataforLoadpoint[lp.getID()] {
-		lp.Update(site.PowerForLoadpoint[lp.getID()], true)
+		lp.Update(site.PowerForLoadpoint[lp.getID()], false)
 	}
 }
 
@@ -933,8 +990,9 @@ func (site *Site) update_all_Loadpoints() {
 	}
 }
 
-func (site *Site) update_single_Loadpoint(lp updater) {
-	site.log.DEBUG.Println("----")
+func (site *Site) update_single_Loadpoint(lp *Loadpoint) {
+	site.update_Loadpoint(lp)
+	/*site.log.DEBUG.Println("----")
 
 	// update all loadpoint's charge power
 	var totalChargePower float64
@@ -1005,7 +1063,7 @@ func (site *Site) update_single_Loadpoint(lp updater) {
 		site.updateBatteryMode()
 	}
 
-	site.stats.Update(site)
+	site.stats.Update(site)*/
 }
 
 // prepare publishes initial values

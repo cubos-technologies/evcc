@@ -1633,20 +1633,20 @@ func (lp *Loadpoint) phaseSwitchCompleted() bool {
 	return time.Since(lp.phasesSwitched) > phaseSwitchDuration
 }
 
+func (lp *Loadpoint) SetEnvironment(greenShare float64, effPrice, effCo2 *float64) {
+	lp.sessionEnergy.SetEnvironment(greenShare, effPrice, effCo2)
+}
+
 // GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
-func (lp *Loadpoint) GetDataFromLoadpoint(sitePower float64, smartCostActive bool, smartCostNextStart time.Time, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64) {
+func (lp *Loadpoint) GetDataFromLoadpoint() {
 	lp.isUpdated = false
 	lp.UpdateChargePowerAndCurrents()
 
-	lp.publish(keys.SmartCostActive, smartCostActive)
-	lp.publish(keys.SmartCostNextStart, smartCostNextStart)
 	lp.processTasks()
 
 	// read and publish meters first- charge power and currents have already been updated by the site
 	lp.updateChargeVoltages()
 	lp.phasesFromChargeCurrents()
-
-	lp.sessionEnergy.SetEnvironment(greenShare, effPrice, effCo2)
 
 	// update ChargeRater here to make sure initial meter update is caught
 	lp.bus.Publish(evChargeCurrent, lp.chargeCurrent)
