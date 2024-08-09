@@ -1256,7 +1256,7 @@ func (lp *Loadpoint) publishTimer(name string, delay time.Duration, action strin
 }
 
 // pvMaxCurrent calculates the maximum target current for PV mode
-func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batteryBuffered, batteryStart bool) float64 {
+func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64) float64 {
 	// read only once to simplify testing
 	minCurrent := lp.effectiveMinCurrent()
 	maxCurrent := lp.effectiveMaxCurrent()
@@ -1278,10 +1278,10 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batter
 	targetCurrent := max(effectiveCurrent+deltaCurrent, 0)
 
 	// in MinPV mode or under special conditions return at least minCurrent
-	if battery := batteryStart || batteryBuffered && lp.charging(); (mode == api.ModeMinPV || battery) && targetCurrent < minCurrent {
+	/*if battery := batteryStart || batteryBuffered && lp.charging(); (mode == api.ModeMinPV || battery) && targetCurrent < minCurrent {
 		lp.log.DEBUG.Printf("pv charge current: min %.3gA > %.3gA (%.0fW @ %dp, battery: %t)", minCurrent, targetCurrent, sitePower, activePhases, battery)
 		return minCurrent
-	}
+	}*/
 
 	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA + %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, deltaCurrent, sitePower, activePhases)
 
@@ -1689,16 +1689,14 @@ func (lp *Loadpoint) GetDataFromLoadpoint() {
 	}
 }
 
-func (lp *Loadpoint) getID() int {
-	lp.RLock()
-	defer lp.RUnlock()
-	return 1
-}
-
 func (lp *Loadpoint) IsUpdated() bool {
 	lp.RLock()
 	defer lp.RUnlock()
 	return lp.isUpdated
+}
+
+func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
+	lp.publish(keys.SmartCostNextStart, smartCostNextStart)
 }
 
 // Update is the main control function. It reevaluates meters and charger state
@@ -1760,16 +1758,8 @@ func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool) {
 		err = lp.fastCharging()
 
 	case mode == api.ModeMinPV || mode == api.ModePV:
-		// cheap tariff
-		if smartCostActive && lp.EffectivePlanTime().IsZero() {
-			err = lp.fastCharging()
-			lp.resetPhaseTimer()
-			lp.elapsePVTimer() // let PV mode disable immediately afterwards
-			break
-		}
-
-		//targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryBuffered, batteryStart)
-		targetCurrent := sitePower
+		targetCurrent := lp.pvMaxCurrent(mode, sitePower)
+		//targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()
 		}

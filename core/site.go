@@ -106,8 +106,8 @@ type Site struct {
 
 	publishCache map[string]any // store last published values to avoid unnecessary republishing
 
-	newDataforLoadpoint  []bool    //TODO Comments
-	PowerForLoadpoint    []float64 //TODO Map
+	newDataforLoadpoint  map[*Loadpoint]bool    //TODO Comments
+	PowerForLoadpoint    map[*Loadpoint]float64 //TODO Map
 	prevError            float64
 	freePower_pid        float64
 	maxPrio              int
@@ -801,8 +801,8 @@ func (site *Site) CalculateValues() {
 	batteryPower := site.batteryPower
 	sumFlexCurrent := 0.0
 	sumSetCurrents := 0.0
-	for i := 0; i < count_Loadpoints; i++ {
-		sumSetCurrents += site.PowerForLoadpoint[i]
+	for _, lp := range site.loadpoints {
+		sumSetCurrents += site.PowerForLoadpoint[lp]
 	}
 	//TODO Batterypower neu berechnen
 	// Get Batterypower
@@ -815,7 +815,9 @@ func (site *Site) CalculateValues() {
 	} else if site.batterySoc < site.bufferStartSoc {
 		batteryPower = 0
 	} else if site.batterySoc > site.bufferStartSoc {
-
+		if batteryPower < 0 {
+			batteryPower = -batteryPower
+		}
 	}
 	// Get Data from all Loadpoints
 	for _, lp := range site.loadpoints {
@@ -828,29 +830,76 @@ func (site *Site) CalculateValues() {
 			chargerMode := lp.GetMode()
 			prio := lp.EffectivePriority()
 			if chargerMode == api.ModePV {
-				sumFlexCurrent += lpChargePower
+				var smartCostActive bool
+				if rate, err := site.plannerRate(); err == nil {
+					smartCostActive = site.smartCostActive(lp, rate)
+				} else {
+					site.log.WARN.Println("smartCostActive:", err)
+				}
+
+				var smartCostNextStart time.Time
+				if !smartCostActive {
+					if rates, err := site.plannerRates(); err == nil {
+						smartCostNextStart = site.smartCostNextStart(lp, rates)
+					} else {
+						site.log.WARN.Println("smartCostNextStart:", err)
+					}
+				}
+				lp.publishNextSmartCostStart(smartCostNextStart)
+				if smartCostActive && lp.EffectivePlanTime().IsZero() {
+					site.PowerForLoadpoint[lp] = lp.GetMaxPower()
+					sumMinCurrent += lp.GetMaxPower()
+					lp.resetPhaseTimer()
+					lp.elapsePVTimer()
+				} else {
+					sumFlexCurrent += lpChargePower
+					maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
+					count_Loadpoints_Prio[prio]++
+					minPowerPVCharpoints_Prio[prio] += lp.GetMinPower()
+				}
 				maxCurrentCharpoints += lp.GetMaxPower()
-				maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
-				count_Loadpoints_Prio[prio]++
-				minPowerPVCharpoints_Prio[prio] += lp.GetMinPower()
 			} else if chargerMode == api.ModeMinPV {
-				count_Loadpoints_Prio[prio]++
-				sumFlexCurrent += lpChargePower - lp.GetMinPower()
-				sumMinCurrent += lp.GetMinPower()
+				var smartCostActive bool
+				if rate, err := site.plannerRate(); err == nil {
+					smartCostActive = site.smartCostActive(lp, rate)
+				} else {
+					site.log.WARN.Println("smartCostActive:", err)
+				}
+
+				var smartCostNextStart time.Time
+				if !smartCostActive {
+					if rates, err := site.plannerRates(); err == nil {
+						smartCostNextStart = site.smartCostNextStart(lp, rates)
+					} else {
+						site.log.WARN.Println("smartCostNextStart:", err)
+					}
+				}
+				lp.publishNextSmartCostStart(smartCostNextStart)
+				if smartCostActive && lp.EffectivePlanTime().IsZero() {
+					site.PowerForLoadpoint[lp] = lp.GetMaxPower()
+					sumMinCurrent += lp.GetMaxPower()
+					lp.resetPhaseTimer()
+					lp.elapsePVTimer()
+
+				} else {
+					count_Loadpoints_Prio[prio]++
+					sumFlexCurrent += lpChargePower - lp.GetMinPower()
+					sumMinCurrent += lp.GetMinPower()
+					maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
+					minCurrentCharpoints_Prio[prio] += lp.GetMinPower()
+					site.PowerForLoadpoint[lp] = lp.GetMinPower()
+				}
 				maxCurrentCharpoints += lp.GetMaxPower()
-				maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
-				minCurrentCharpoints_Prio[prio] += lp.GetMinPower()
-				site.PowerForLoadpoint[lp.getID()] = lp.GetMinPower()
 			} else if chargerMode == api.ModeNow {
-				site.PowerForLoadpoint[lp.getID()] = lp.GetMaxPower()
+				site.PowerForLoadpoint[lp] = lp.GetMaxPower()
 				sumMinCurrent += lpChargePower
 				maxCurrentCharpoints += lp.GetMaxPower()
 			} else if chargerMode == api.ModeOff {
-				site.PowerForLoadpoint[lp.getID()] = 0
+				site.PowerForLoadpoint[lp] = 0
 			}
 		} else {
 			sumFlexCurrent += 0
-			site.PowerForLoadpoint[lp.getID()] = 0
+			site.PowerForLoadpoint[lp] = 0
 		}
 		site.prioritizer.UpdateChargePowerFlexibility(lp)
 	}
@@ -901,7 +950,6 @@ func (site *Site) CalculateValues() {
 	site.freePower_pid = KP*error_pid + integral + KD*derivative
 	site.prevError = error_pid
 
-	//TODO Circuits
 	// update all circuits' power and currents
 	if site.circuit != nil {
 		if err := site.circuit.Update(site.loadpointsAsCircuitDevices()); err != nil {
@@ -909,22 +957,6 @@ func (site *Site) CalculateValues() {
 		}
 
 		site.publishCircuits()
-	}
-	//TODO Smartcost
-	var smartCostActive bool
-	if rate, err := site.plannerRate(); err == nil {
-		smartCostActive = site.smartCostActive(lp, rate)
-	} else {
-		site.log.WARN.Println("smartCostActive:", err)
-	}
-
-	var smartCostNextStart time.Time
-	if !smartCostActive {
-		if rates, err := site.plannerRates(); err == nil {
-			smartCostNextStart = site.smartCostNextStart(lp, rates)
-		} else {
-			site.log.WARN.Println("smartCostNextStart:", err)
-		}
 	}
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
@@ -936,7 +968,7 @@ func (site *Site) CalculateValues() {
 				chargerMode := lp.GetMode()
 				if lp.EffectivePriority() == j && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) {
 					power_for_Loadpoint = lp.GetMaxPower()
-					site.PowerForLoadpoint[lp.getID()] = power_for_Loadpoint
+					site.PowerForLoadpoint[lp] = power_for_Loadpoint
 					freePower -= power_for_Loadpoint
 				}
 			}
@@ -946,10 +978,10 @@ func (site *Site) CalculateValues() {
 				chargerMode := lp.GetMode()
 				if lp.EffectivePriority() == j {
 					if chargerMode == api.ModeMinPV {
-						site.PowerForLoadpoint[lp.getID()] += (power_for_Loadpoint - lp.GetMinPower())
+						site.PowerForLoadpoint[lp] += (power_for_Loadpoint - lp.GetMinPower())
 						freePower -= (power_for_Loadpoint - lp.GetMinPower())
 					} else if chargerMode == api.ModePV {
-						site.PowerForLoadpoint[lp.getID()] += power_for_Loadpoint
+						site.PowerForLoadpoint[lp] += power_for_Loadpoint
 						freePower -= power_for_Loadpoint
 					}
 
@@ -965,19 +997,24 @@ func (site *Site) CalculateValues() {
 						} else {
 							power_for_Loadpoint = 0
 						}
-						site.PowerForLoadpoint[lp.getID()] += power_for_Loadpoint
+						site.PowerForLoadpoint[lp] += power_for_Loadpoint
 						freePower -= power_for_Loadpoint
 					}
 				}
 			}
 		}
 	}
+	if site.GetBatteryDischargeControl() {
+		site.updateBatteryMode()
+	}
+
+	site.stats.Update(site)
 }
 
 func (site *Site) update_Loadpoint(lp *Loadpoint) {
 	lp.GetDataFromLoadpoint()
-	if site.newDataforLoadpoint[lp.getID()] {
-		lp.Update(site.PowerForLoadpoint[lp.getID()], false)
+	if site.newDataforLoadpoint[lp] {
+		lp.Update(site.PowerForLoadpoint[lp], false)
 	}
 }
 
