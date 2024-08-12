@@ -113,6 +113,9 @@ type Site struct {
 	maxPrio              int
 	greenShareLoadpoints float64
 	greenShareHome       float64
+	circuitMinPower      map[*api.Circuit]float64
+	circuitCount         map[*api.Circuit]int
+	circuitList          []*api.Circuit
 }
 
 // MetersConfig contains the site's meter configuration
@@ -827,6 +830,16 @@ func (site *Site) CalculateValues() {
 		count_Loadpoints++
 		if chargerStatus == api.StatusB || chargerStatus == api.StatusC {
 			count_active_Loadpoints++
+			circuit := lp.GetCircuit()
+			boolCircuit := false
+			for _, c := range site.circuitList {
+				if circuit == *c {
+					boolCircuit = true
+				}
+			}
+			if !boolCircuit {
+				site.circuitList = append(site.circuitList, &circuit)
+			}
 			chargerMode := lp.GetMode()
 			prio := lp.EffectivePriority()
 			if chargerMode == api.ModePV {
@@ -878,6 +891,7 @@ func (site *Site) CalculateValues() {
 				if smartCostActive && lp.EffectivePlanTime().IsZero() {
 					site.PowerForLoadpoint[lp] = lp.GetMaxPower()
 					sumMinCurrent += lp.GetMaxPower()
+					site.circuitMinPower[&circuit] += lp.GetMaxPower()
 					lp.resetPhaseTimer()
 					lp.elapsePVTimer()
 
@@ -885,6 +899,7 @@ func (site *Site) CalculateValues() {
 					count_Loadpoints_Prio[prio]++
 					sumFlexCurrent += lpChargePower - lp.GetMinPower()
 					sumMinCurrent += lp.GetMinPower()
+					site.circuitMinPower[&circuit] += lp.GetMinPower()
 					maxPowerLoadpoints_prio[prio] += lp.GetMaxPower()
 					minCurrentCharpoints_Prio[prio] += lp.GetMinPower()
 					site.PowerForLoadpoint[lp] = lp.GetMinPower()
@@ -893,6 +908,7 @@ func (site *Site) CalculateValues() {
 			} else if chargerMode == api.ModeNow {
 				site.PowerForLoadpoint[lp] = lp.GetMaxPower()
 				sumMinCurrent += lpChargePower
+				site.circuitMinPower[&circuit] += lp.GetMaxPower()
 				maxCurrentCharpoints += lp.GetMaxPower()
 			} else if chargerMode == api.ModeOff {
 				site.PowerForLoadpoint[lp] = 0
@@ -955,21 +971,47 @@ func (site *Site) CalculateValues() {
 		if err := site.circuit.Update(site.loadpointsAsCircuitDevices()); err != nil {
 			site.log.ERROR.Println(err)
 		}
-
 		site.publishCircuits()
 	}
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
 	freePower := site.freePower_pid
+	var freePowerInCircuit map[*api.Circuit]float64
+	for _, c := range site.circuitList {
+		d := *c
+		d.GetMaxPower()
+		freePowerInCircuit[c] = d.GetMaxPower() - site.circuitMinPower[c]
+
+	}
 	for j := site.maxPrio; j > 0; j-- {
+		var circuitcount map[*api.Circuit]int
+		var circuitMaxPowerFromLoadpoints map[*api.Circuit]float64
+		for _, lp := range site.loadpoints {
+			chargerMode := lp.GetMode()
+			if lp.EffectivePriority() == j && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) {
+				circuit := lp.GetCircuit()
+				circuitMaxPowerFromLoadpoints[&circuit] += lp.GetMaxPower()
+				circuitcount[&circuit]++
+			}
+		}
+		var maxPowerForCircuit map[*api.Circuit]float64
+		for _, c := range site.circuitList {
+			maxPowerForCircuit[c] = freePowerInCircuit[c] / circuitMaxPowerFromLoadpoints[c]
+		}
 		power_for_Loadpoint := 0.0
 		if freePower > maxPowerLoadpoints_prio[j] {
 			for _, lp := range site.loadpoints {
 				chargerMode := lp.GetMode()
 				if lp.EffectivePriority() == j && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) {
-					power_for_Loadpoint = lp.GetMaxPower()
+					c := lp.GetCircuit()
+					if power_for_Loadpoint > maxPowerForCircuit[&c] {
+						power_for_Loadpoint = maxPowerForCircuit[&c]
+					} else {
+						power_for_Loadpoint = lp.GetMaxPower()
+					}
 					site.PowerForLoadpoint[lp] = power_for_Loadpoint
 					freePower -= power_for_Loadpoint
+					freePowerInCircuit[&c] -= power_for_Loadpoint
 				}
 			}
 		} else if freePower > minPowerPVCharpoints_Prio[j] {
@@ -978,11 +1020,21 @@ func (site *Site) CalculateValues() {
 				chargerMode := lp.GetMode()
 				if lp.EffectivePriority() == j {
 					if chargerMode == api.ModeMinPV {
+						c := lp.GetCircuit()
+						if power_for_Loadpoint > maxPowerForCircuit[&c] {
+							power_for_Loadpoint = maxPowerForCircuit[&c]
+						}
 						site.PowerForLoadpoint[lp] += (power_for_Loadpoint - lp.GetMinPower())
 						freePower -= (power_for_Loadpoint - lp.GetMinPower())
+						freePowerInCircuit[&c] -= (power_for_Loadpoint - lp.GetMinPower())
 					} else if chargerMode == api.ModePV {
+						c := lp.GetCircuit()
+						if power_for_Loadpoint > maxPowerForCircuit[&c] {
+							power_for_Loadpoint = maxPowerForCircuit[&c]
+						}
 						site.PowerForLoadpoint[lp] += power_for_Loadpoint
 						freePower -= power_for_Loadpoint
+						freePowerInCircuit[&c] -= power_for_Loadpoint
 					}
 
 				}
@@ -997,8 +1049,13 @@ func (site *Site) CalculateValues() {
 						} else {
 							power_for_Loadpoint = 0
 						}
+						c := lp.GetCircuit()
+						if power_for_Loadpoint > maxPowerForCircuit[&c] {
+							power_for_Loadpoint = maxPowerForCircuit[&c]
+						}
 						site.PowerForLoadpoint[lp] += power_for_Loadpoint
 						freePower -= power_for_Loadpoint
+						freePowerInCircuit[&c] -= power_for_Loadpoint
 					}
 				}
 			}
