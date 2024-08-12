@@ -45,7 +45,6 @@ build docker:
       alias: docker
   variables:
     # docker dind variables from https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#docker-in-docker-with-tls-disabled-in-the-docker-executor
-    DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     # tell git to clone submodules
     GIT_SUBMODULE_FORCE_HTTPS: "true"
@@ -91,7 +90,6 @@ build docker:
       alias: docker
   variables:
     # docker dind variables from https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#docker-in-docker-with-tls-disabled-in-the-docker-executor
-    DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     # disable git clone
     GIT_STRATEGY: none
