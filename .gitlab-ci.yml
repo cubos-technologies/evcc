@@ -136,6 +136,7 @@ deploy to harbor for tag:
     # on manual trigger for version tags
     - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
   before_script:
+    - echo $HARBOR_URL
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_URL
     - docker pull "$IMAGE_TAG_COMMIT"
