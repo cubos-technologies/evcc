@@ -229,7 +229,22 @@
 							>
 								<template #icon><CircuitsIcon /></template>
 								<template #tags>
-									<DeviceTags :tags="yamlTags('circuits')" />
+									<DeviceTags
+										v-if="circuits.length == 0"
+										:tags="yamlTags('circuits')"
+									/>
+									<template
+										v-else
+										v-for="(circuit, idx) in circuits"
+										:key="circuit.name"
+									>
+										<hr v-if="idx > 0" />
+										<p class="my-2 fw-bold">
+											{{ circuit.config?.title }}
+											<code>({{ circuit.name }})</code>
+										</p>
+										<DeviceTags :tags="circuitTags(circuit)" />
+									</template>
 								</template>
 							</DeviceCard>
 							<DeviceCard
@@ -277,27 +292,31 @@
 					:vehicleOptions="vehicleOptions"
 					ref="loadpointModal"
 					:loadpointCount="loadpoints.length"
+					:fade="loadpointSubModalOpen ? 'left' : ''"
 					@updated="loadpointChanged"
 					@openChargerModal="editLoadpointCharger"
 					@openMeterModal="editLoadpointMeter"
+					@opened="loadpointSubModalOpen = false"
 				/>
 				<VehicleModal :id="selectedVehicleId" @vehicle-changed="vehicleChanged" />
 				<MeterModal
 					:id="selectedMeterId"
 					:name="selectedMeterName"
 					:type="selectedMeterType"
+					:fade="loadpointSubModalOpen ? 'right' : ''"
 					@added="addMeter"
 					@updated="meterChanged"
 					@removed="removeMeter"
-					@closed="meterModalClosed"
+					@close="meterModalClosed"
 				/>
 				<ChargerModal
 					:id="selectedChargerId"
 					:name="selectedChargerName"
+					:fade="loadpointSubModalOpen ? 'right' : ''"
 					@added="addCharger"
 					@updated="chargerChanged"
 					@removed="removeCharger"
-					@closed="chargerModalClosed"
+					@close="chargerModalClosed"
 				/>
 				<InfluxModal @changed="loadDirty" />
 				<MqttModal @changed="loadDirty" />
@@ -399,11 +418,13 @@ export default {
 			meters: [],
 			loadpoints: [],
 			chargers: [],
+			circuits: [],
 			selectedVehicleId: undefined,
 			selectedMeterId: undefined,
 			selectedMeterType: undefined,
 			selectedChargerId: undefined,
 			selectedLoadpointId: undefined,
+			loadpointSubModalOpen: false,
 			site: { grid: "", pv: [], battery: [], title: "" },
 			deviceValueTimeout: undefined,
 			deviceValues: {},
@@ -499,6 +520,7 @@ export default {
 			await this.loadSite();
 			await this.loadChargers();
 			await this.loadLoadpoints();
+			await this.loadCircuits();
 			await this.loadDirty();
 			await this.updateValues();
 			await this.updateYamlConfigState();
@@ -520,6 +542,10 @@ export default {
 		async loadMeters() {
 			const response = await api.get("/config/devices/meter");
 			this.meters = response.data?.result || [];
+		},
+		async loadCircuits() {
+			const response = await api.get("/config/devices/circuit");
+			this.circuits = response.data?.result || [];
 		},
 		async loadSite() {
 			const response = await api.get("/config/site", {
@@ -564,6 +590,7 @@ export default {
 			return Modal.getOrCreateInstance(document.getElementById("chargerModal"));
 		},
 		editLoadpointCharger(name) {
+			this.loadpointSubModalOpen = true;
 			const charger = this.chargers.find((c) => c.name === name);
 			if (charger && charger.id === undefined) {
 				alert(
@@ -575,6 +602,7 @@ export default {
 			this.$nextTick(() => this.editCharger(charger?.id));
 		},
 		editLoadpointMeter(name) {
+			this.loadpointSubModalOpen = true;
 			const meter = this.meters.find((m) => m.name === name);
 			if (meter && meter.id === undefined) {
 				alert("yaml configured meters can not be edited. Remove meter from yaml first.");
@@ -760,6 +788,25 @@ export default {
 		},
 		yamlTags(key) {
 			return { configured: { value: this.yamlConfigState[key] } };
+		},
+		circuitTags(circuit) {
+			const data = store.state?.circuits[circuit.name] || {};
+			const result = {};
+			if (data.maxPower) {
+				result.powerRange = {
+					value: [data.power || 0, data.maxPower],
+					warning: data.power >= data.maxPower,
+				};
+			} else {
+				result.power = { value: data.power || 0, muted: true };
+			}
+			if (data.maxCurrent) {
+				result.currentRange = {
+					value: [data.current || 0, data.maxCurrent],
+					warning: data.current >= data.maxCurrent,
+				};
+			}
+			return result;
 		},
 		deviceError(type, name) {
 			const fatal = store.state?.fatal || {};

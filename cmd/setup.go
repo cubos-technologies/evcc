@@ -18,11 +18,12 @@ import (
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/api/globalconfig"
 	"github.com/evcc-io/evcc/charger"
-	"github.com/evcc-io/evcc/charger/eebus"
 	"github.com/evcc-io/evcc/cmd/shutdown"
 	"github.com/evcc-io/evcc/core"
+	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
+	coresettings "github.com/evcc-io/evcc/core/settings"
 	"github.com/evcc-io/evcc/hems"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/provider/golang"
@@ -32,6 +33,7 @@ import (
 	"github.com/evcc-io/evcc/server"
 	"github.com/evcc-io/evcc/server/db"
 	"github.com/evcc-io/evcc/server/db/settings"
+	"github.com/evcc-io/evcc/server/eebus"
 	"github.com/evcc-io/evcc/server/modbus"
 	"github.com/evcc-io/evcc/server/oauth2redirect"
 	"github.com/evcc-io/evcc/tariff"
@@ -134,8 +136,15 @@ If you know what you're doing, you can run evcc ignoring the service database wi
 	return err
 }
 
-func configureCircuits(static []config.Named, names ...string) error {
-	children := slices.Clone(static)
+func configureCircuits(conf []config.Named) error {
+	// migrate settings
+	if settings.Exists(keys.Circuits) {
+		if err := settings.Yaml(keys.Circuits, new([]map[string]any), &conf); err != nil {
+			return err
+		}
+	}
+
+	children := slices.Clone(conf)
 
 	// TODO: check for circular references
 NEXT:
@@ -155,7 +164,7 @@ NEXT:
 		}
 
 		log := util.NewLogger("circuit-" + cc.Name)
-		instance, err := core.NewCircuitFromConfig(log, cc.Other)
+		instance, err := circuit.NewFromConfig(log, cc.Other)
 		if err != nil {
 			return fmt.Errorf("cannot create circuit '%s': %w", cc.Name, err)
 		}
@@ -178,52 +187,6 @@ NEXT:
 		return fmt.Errorf("circuit is missing parent: %s", children[0].Name)
 	}
 
-	// append devices from database
-	configurable, err := config.ConfigurationsByClass(templates.Circuit)
-	if err != nil {
-		return err
-	}
-
-	children2 := slices.Clone(configurable)
-
-NEXT2:
-	for i, conf := range children2 {
-		cc := conf.Named()
-
-		if len(names) > 0 && !slices.Contains(names, cc.Name) {
-			return nil
-		}
-
-		if parent := cast.ToString(cc.Property("parent")); parent != "" {
-			if _, err := config.Circuits().ByName(parent); err != nil {
-				continue
-			}
-		}
-
-		log := util.NewLogger("circuit-" + cc.Name)
-		instance, err := core.NewCircuitFromConfig(log, cc.Other)
-		if err != nil {
-			return fmt.Errorf("cannot create circuit '%s': %w", cc.Name, err)
-		}
-
-		// ensure config has title
-		if instance.GetTitle() == "" {
-			//lint:ignore SA1019 as Title is safe on ascii
-			instance.SetTitle(strings.Title(cc.Name))
-		}
-
-		if err := config.Circuits().Add(config.NewConfigurableDevice(conf, instance)); err != nil {
-			return err
-		}
-
-		children2 = slices.Delete(children2, i, i+1)
-		goto NEXT2
-	}
-
-	if len(children2) > 0 {
-		return fmt.Errorf("missing parent circuit: %s", children2[0].Named().Name)
-	}
-
 	var rootFound bool
 	for _, dev := range config.Circuits().Devices() {
 		c := dev.Instance()
@@ -244,6 +207,8 @@ NEXT2:
 }
 
 func configureMeters(static []config.Named, names ...string) error {
+	g, _ := errgroup.WithContext(context.Background())
+
 	for i, cc := range static {
 		if cc.Name == "" {
 			return fmt.Errorf("cannot create meter %d: missing name", i+1)
@@ -257,14 +222,18 @@ func configureMeters(static []config.Named, names ...string) error {
 			log.WARN.Printf("create meter %d: %v", i+1, err)
 		}
 
-		instance, err := meter.NewFromConfig(cc.Type, cc.Other)
-		if err != nil {
-			return &DeviceError{cc.Name, fmt.Errorf("cannot create meter '%s': %w", cc.Name, err)}
-		}
+		g.Go(func() error {
+			instance, err := meter.NewFromConfig(cc.Type, cc.Other)
+			if err != nil {
+				return &DeviceError{cc.Name, fmt.Errorf("cannot create meter '%s': %w", cc.Name, err)}
+			}
 
-		if err := config.Meters().Add(config.NewStaticDevice(cc, instance)); err != nil {
-			return &DeviceError{cc.Name, err}
-		}
+			if err := config.Meters().Add(config.NewStaticDevice(cc, instance)); err != nil {
+				return &DeviceError{cc.Name, err}
+			}
+
+			return nil
+		})
 	}
 
 	// append devices from database
@@ -274,25 +243,29 @@ func configureMeters(static []config.Named, names ...string) error {
 	}
 
 	for _, conf := range configurable {
-		cc := conf.Named()
+		g.Go(func() error {
+			cc := conf.Named()
 
-		if len(names) > 0 && !slices.Contains(names, cc.Name) {
+			if len(names) > 0 && !slices.Contains(names, cc.Name) {
+				return nil
+			}
+
+			// TODO add fake devices
+
+			instance, err := meter.NewFromConfig(cc.Type, cc.Other)
+			if err != nil {
+				return &DeviceError{cc.Name, fmt.Errorf("cannot create meter '%s': %w", cc.Name, err)}
+			}
+
+			if err := config.Meters().Add(config.NewConfigurableDevice(conf, instance)); err != nil {
+				return &DeviceError{cc.Name, err}
+			}
+
 			return nil
-		}
-
-		// TOTO add fake devices
-
-		instance, err := meter.NewFromConfig(cc.Type, cc.Other)
-		if err != nil {
-			return &DeviceError{cc.Name, fmt.Errorf("cannot create meter '%s': %w", cc.Name, err)}
-		}
-
-		if err := config.Meters().Add(config.NewConfigurableDevice(conf, instance)); err != nil {
-			return &DeviceError{cc.Name, err}
-		}
+		})
 	}
 
-	return nil
+	return g.Wait()
 }
 
 func configureChargers(static []config.Named, names ...string) error {
@@ -339,7 +312,7 @@ func configureChargers(static []config.Named, names ...string) error {
 				return nil
 			}
 
-			// TOTO add fake devices
+			// TODO add fake devices
 
 			instance, err := charger.NewFromConfig(cc.Type, cc.Other)
 			if err != nil {
@@ -564,7 +537,7 @@ func configureDatabase(conf globalconfig.DB) error {
 
 	// persist unsaved settings every 30 minutes
 	go func() {
-		for range time.Tick(30 * time.Minute) {
+		for range time.Tick(time.Minute) {
 			persistSettings()
 		}
 	}()
@@ -983,7 +956,7 @@ func configureLoadpoints(conf globalconfig.All) error {
 		cc.Name = "lp-" + strconv.Itoa(id+1)
 
 		log := util.NewLoggerWithLoadpoint(cc.Name, id+1)
-		settings := &core.Settings{Key: "lp" + strconv.Itoa(id+1) + "."}
+		settings := coresettings.NewDatabaseSettingsAdapter(fmt.Sprintf("lp%d.", id+1))
 
 		instance, err := core.NewLoadpointFromConfig(log, settings, cc.Other)
 		if err != nil {
@@ -1008,7 +981,9 @@ func configureLoadpoints(conf globalconfig.All) error {
 		name := "lp-" + strconv.Itoa(id+1)
 
 		log := util.NewLoggerWithLoadpoint(name, id+1)
-		settings := &core.Settings{Key: "lp" + cc.Name + "."}
+
+		dev := config.BlankConfigurableDevice[loadpoint.API]()
+		settings := coresettings.NewDeviceSettingsAdapter(dev)
 
 		// TODO: proper handling of id/name
 		delete(cc.Other, "id")
@@ -1018,8 +993,9 @@ func configureLoadpoints(conf globalconfig.All) error {
 		if err != nil {
 			return fmt.Errorf("failed configuring loadpoint: %w", err)
 		}
+		dev.Update(cc.Other, instance)
 
-		if err := config.Loadpoints().Add(config.NewConfigurableDevice(conf, loadpoint.API(instance))); err != nil {
+		if err := config.Loadpoints().Add(dev); err != nil {
 			return err
 		}
 	}

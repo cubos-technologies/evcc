@@ -23,6 +23,15 @@ func NewConfigurableDevice[T any](config Config, instance T) ConfigurableDevice[
 	}
 }
 
+func BlankConfigurableDevice[T any]() ConfigurableDevice[T] {
+	// NOTE: creating loadpoint will read from settings, hence config.Value must be valid json
+	return &configurableDevice[T]{
+		config: Config{
+			Value: "{}",
+		},
+	}
+}
+
 func (d *configurableDevice[T]) Config() Named {
 	return d.config.Named()
 }

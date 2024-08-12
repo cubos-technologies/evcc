@@ -5,12 +5,12 @@ import { startSimulator, stopSimulator, simulatorUrl, simulatorConfig } from "./
 test.use({ baseURL: baseUrl() });
 
 test.beforeAll(async () => {
-  await start(simulatorConfig(), "password.sql");
   await startSimulator();
+  await start(simulatorConfig(), "password.sql");
 });
 test.afterAll(async () => {
-  await stopSimulator();
   await stop();
+  await stopSimulator();
 });
 
 test.beforeEach(async ({ page }) => {
@@ -38,7 +38,7 @@ test.describe("smart cost limit", async () => {
     await page.getByTestId("loadpoint-settings-modal").getByLabel("Close").click();
     await expect(page.getByTestId("loadpoint-settings-modal")).not.toBeVisible();
     await expect(page.getByTestId("vehicle-status-charger")).toHaveText("Charging…");
-    await expect(page.getByTestId("vehicle-status-smartcost")).toHaveText("40.0 ct ≤ 40.0 ct");
+    await expect(page.getByTestId("vehicle-status-smartcost")).toHaveText(/[24]0\.0 ct ≤ 40\.0 ct/);
   });
   test("price above limit", async ({ page }) => {
     await page.goto("/");

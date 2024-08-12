@@ -9,6 +9,7 @@ import (
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/loadpoint"
+	coresettings "github.com/evcc-io/evcc/core/settings"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/templates"
@@ -35,13 +36,13 @@ func getLoadpointStaticConfig(lp loadpoint.API) loadpointStaticConfig {
 
 type loadpointDynamicConfig struct {
 	// dynamic config
-	//Title          string  `json:"title"`
-	Mode           string  `json:"mode"`
-	Priority       int     `json:"priority"`
-	Phases         int     `json:"phases"`
-	MinCurrent     float64 `json:"minCurrent"`
-	MaxCurrent     float64 `json:"maxCurrent"`
-	SmartCostLimit float64 `json:"smartCostLimit"`
+	Title          string   `json:"title"`
+	Mode           string   `json:"mode"`
+	Priority       int      `json:"priority"`
+	Phases         int      `json:"phases"`
+	MinCurrent     float64  `json:"minCurrent"`
+	MaxCurrent     float64  `json:"maxCurrent"`
+	SmartCostLimit *float64 `json:"smartCostLimit"`
 
 	Thresholds loadpoint.ThresholdsConfig `json:"thresholds"`
 	Soc        loadpoint.SocConfig        `json:"soc"`
@@ -181,20 +182,25 @@ func newLoadpointHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		dynamic, static, err := loadpointSplitConfig(r.Body)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, err)
+			return
+		}
 
 		id := len(h.Devices())
 		name := "lp-" + strconv.Itoa(id+1)
 
 		log := util.NewLoggerWithLoadpoint(name, id+1)
 
-		// NOTE: cannot create settings here since the DB id is yet unknown
-		// settings := &core.Settings{Key: "lp" + cc.Name + "."}
+		dev := config.BlankConfigurableDevice[loadpoint.API]()
+		settings := coresettings.NewDeviceSettingsAdapter(dev)
 
-		instance, err := core.NewLoadpointFromConfig(log, nil, static)
+		instance, err := core.NewLoadpointFromConfig(log, settings, static)
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, err)
 			return
 		}
+		dev.Update(static, instance)
 
 		if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
 			jsonError(w, http.StatusBadRequest, err)
@@ -206,7 +212,7 @@ func newLoadpointHandler() http.HandlerFunc {
 			return
 		}
 
-		if err := h.Add(config.NewConfigurableDevice(conf, loadpoint.API(instance))); err != nil {
+		if err := h.Add(dev); err != nil {
 			jsonError(w, http.StatusBadRequest, err)
 			return
 		}

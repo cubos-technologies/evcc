@@ -3,8 +3,9 @@
 		id="meterModal"
 		:title="modalTitle"
 		data-testid="meter-modal"
+		:fade="fade"
 		@open="open"
-		@closed="closed"
+		@close="close"
 	>
 		<div v-if="!meterType">
 			<NewDeviceButton
@@ -60,26 +61,25 @@
 				:defaultPort="modbus.Port"
 				:capabilities="modbusCapabilities"
 			/>
-			<FormRow
-				v-for="param in templateParams"
-				:id="`meterParam${param.Name}`"
+			<PropertyEntry
+				v-for="param in normalParams"
 				:key="param.Name"
-				:optional="!param.Required"
-				:label="param.Description || `[${param.Name}]`"
-				:help="param.Description === param.Help ? undefined : param.Help"
-				:example="param.Example"
-			>
-				<PropertyField
-					:id="`meterParam${param.Name}`"
-					v-model="values[param.Name]"
-					:masked="param.Mask"
-					:property="param.Name"
-					:type="param.Type"
-					class="me-2"
-					:required="param.Required"
-					:validValues="param.ValidValues"
-				/>
-			</FormRow>
+				:id="`meterParam${param.Name}`"
+				v-bind="param"
+				v-model="values[param.Name]"
+			/>
+
+			<PropertyCollapsible>
+				<template v-if="advancedParams.length" #advanced>
+					<PropertyEntry
+						v-for="param in advancedParams"
+						:key="param.Name"
+						:id="`meterParam${param.Name}`"
+						v-bind="param"
+						v-model="values[param.Name]"
+					/>
+				</template>
+			</PropertyCollapsible>
 
 			<TestResult
 				v-if="templateName"
@@ -132,7 +132,8 @@
 
 <script>
 import FormRow from "./FormRow.vue";
-import PropertyField from "./PropertyField.vue";
+import PropertyEntry from "./PropertyEntry.vue";
+import PropertyCollapsible from "./PropertyCollapsible.vue";
 import TestResult from "./TestResult.vue";
 import api from "../../api";
 import test from "./mixins/test";
@@ -146,16 +147,27 @@ function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const CUSTOM_FIELDS = ["usage", "modbus"];
+
 export default {
 	name: "MeterModal",
-	components: { FormRow, PropertyField, Modbus, TestResult, NewDeviceButton, GenericModal },
+	components: {
+		FormRow,
+		PropertyEntry,
+		GenericModal,
+		Modbus,
+		TestResult,
+		NewDeviceButton,
+		PropertyCollapsible,
+	},
 	mixins: [test],
 	props: {
 		id: Number,
 		name: String,
 		type: String,
+		fade: String,
 	},
-	emits: ["added", "updated", "removed", "closed"],
+	emits: ["added", "updated", "removed", "close"],
 	data() {
 		return {
 			isModalVisible: false,
@@ -190,18 +202,20 @@ export default {
 			return this.products.filter((p) => p.group === "generic");
 		},
 		templateParams() {
-			const params = this.template?.Params || [];
-			return (
-				params
-					// deprecated fields
-					.filter((p) => !p.Deprecated)
-					// remove usage option
-					.filter((p) => p.Name !== "usage")
-					// remove modbus, handles separately
-					.filter((p) => p.Name !== "modbus")
-					// capacity only for battery meters
-					.filter((p) => this.meterType === "battery" || p.Name !== "capacity")
-			);
+			return (this.template?.Params || [])
+				.filter((p) => !CUSTOM_FIELDS.includes(p.Name))
+				.map((p) => {
+					if (this.meterType === "battery" && p.Name === "capacity") {
+						p.Advanced = false;
+					}
+					return p;
+				});
+		},
+		normalParams() {
+			return this.templateParams.filter((p) => !p.Advanced);
+		},
+		advancedParams() {
+			return this.templateParams.filter((p) => p.Advanced);
 		},
 		modbus() {
 			const params = this.template?.Params || [];
@@ -327,7 +341,7 @@ export default {
 				const { name } = response.data.result;
 				this.$emit("added", this.meterType, name);
 				this.$emit("updated");
-				this.closed();
+				this.close();
 			} catch (e) {
 				console.error(e);
 				alert("create failed");
@@ -354,7 +368,7 @@ export default {
 			try {
 				await api.put(`config/devices/meter/${this.id}`, this.apiData);
 				this.$emit("updated");
-				this.closed();
+				this.close();
 			} catch (e) {
 				console.error(e);
 				alert("update failed");
@@ -366,7 +380,7 @@ export default {
 				await api.delete(`config/devices/meter/${this.id}`);
 				this.$emit("removed", this.meterType, this.name);
 				this.$emit("updated");
-				this.closed();
+				this.close();
 			} catch (e) {
 				console.error(e);
 				alert("delete failed");
@@ -375,9 +389,9 @@ export default {
 		open() {
 			this.isModalVisible = true;
 		},
-		closed() {
-			this.$emit("closed");
-			this.isModalVisible = false;
+		close() {
+			this.$emit("close");
+			his.isModalVisible = false;
 		},
 		selectType(type) {
 			this.selectedType = type;

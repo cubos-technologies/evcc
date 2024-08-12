@@ -9,7 +9,9 @@ import (
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger"
 	"github.com/evcc-io/evcc/core"
+	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/core/loadpoint"
+	coresettings "github.com/evcc-io/evcc/core/settings"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/util"
@@ -94,7 +96,7 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 
 	case templates.Circuit:
 		if _, err = newDevice(class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
-			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+			return circuit.NewFromConfig(util.NewLogger("circuit"), other)
 		}, config.Circuits()); err != nil {
 			return err
 		}
@@ -315,7 +317,7 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 
 	case templates.Circuit:
 		if err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
-			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+			return circuit.NewFromConfig(util.NewLogger("circuit"), other)
 		}, config.Circuits()); err != nil {
 			return err
 		}
@@ -339,21 +341,25 @@ func MQTTnewLoadpointHandler(payload string) error {
 
 	log := util.NewLoggerWithLoadpoint(name, id+1)
 
-	instance, err := core.NewLoadpointFromConfig(log, nil, static)
+	dev := config.BlankConfigurableDevice[loadpoint.API]()
+	settings := coresettings.NewDeviceSettingsAdapter(dev)
+
+	instance, err := core.NewLoadpointFromConfig(log, settings, static)
 	if err != nil {
 		return err
 	}
-	conf, err := config.AddConfig(templates.Loadpoint, "", static)
-	if err != nil {
-		return err
-	}
+	dev.Update(static, instance)
 
 	//TODO saving "dynamic" data in db
 	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
 		return err
 	}
+	_, err = config.AddConfig(templates.Loadpoint, "", static)
+	if err != nil {
+		return err
+	}
 
-	if err := h.Add(config.NewConfigurableDevice(conf, loadpoint.API(instance))); err != nil {
+	if err := h.Add(dev); err != nil {
 		return err
 	}
 

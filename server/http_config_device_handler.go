@@ -8,7 +8,7 @@ import (
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger"
-	"github.com/evcc-io/evcc/core"
+	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
@@ -71,7 +71,9 @@ func deviceConfigMap[T any](class templates.Class, dev config.Device[T]) (map[st
 
 	dc := map[string]any{
 		"name": conf.Name,
-		"type": conf.Type,
+	}
+	if conf.Type != "" {
+		dc["type"] = conf.Type
 	}
 
 	if configurable, ok := dev.(config.ConfigurableDevice[T]); ok {
@@ -138,6 +140,8 @@ func deviceConfigHandler(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, err)
 		return
 	}
+
+	// TODO return application/yaml content type if type != template
 
 	jsonResult(w, res)
 }
@@ -212,6 +216,8 @@ func newDeviceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO add application/yaml content type, reject type==template
+
 	var req map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, err)
@@ -233,7 +239,7 @@ func newDeviceHandler(w http.ResponseWriter, r *http.Request) {
 
 	case templates.Circuit:
 		conf, err = newDevice(class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
-			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+			return circuit.NewFromConfig(util.NewLogger("circuit"), other)
 		}, config.Circuits())
 	}
 
@@ -285,6 +291,8 @@ func updateDeviceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO add application/yaml content type, reject type==template
+
 	var req map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, err)
@@ -304,7 +312,7 @@ func updateDeviceHandler(w http.ResponseWriter, r *http.Request) {
 
 	case templates.Circuit:
 		err = updateDevice(id, class, req, func(_ string, other map[string]interface{}) (api.Circuit, error) {
-			return core.NewCircuitFromConfig(util.NewLogger("circuit"), other)
+			return circuit.NewFromConfig(util.NewLogger("circuit"), other)
 		}, config.Circuits())
 	}
 
