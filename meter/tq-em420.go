@@ -91,6 +91,7 @@ type TqEm420Data struct {
 
 type TqEM420 struct {
 	dataG func() (TqEm420Data, error)
+	usage string
 }
 
 // NewTqEm420FromConfig creates a new configurable meter
@@ -99,9 +100,12 @@ func NewTqEm420FromConfig(other map[string]interface{}) (api.Meter, error) {
 		URI    string
 		Token  string
 		Device string
+		Invert bool
 		Cache  time.Duration
+		Usage  string
 	}{
-		Cache: time.Second,
+		Invert: false,
+		Cache:  time.Second,
 	}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
@@ -134,6 +138,7 @@ func NewTqEm420FromConfig(other map[string]interface{}) (api.Meter, error) {
 
 	m := &TqEM420{
 		dataG: dataG,
+		usage: cc.Usage,
 	}
 
 	_, err := dataG()
@@ -146,14 +151,18 @@ func NewTqEm420FromConfig(other map[string]interface{}) (api.Meter, error) {
 
 func (m *TqEM420) CurrentPower() (float64, error) {
 	res, err := m.dataG()
-	return (res.SmartMeter.Values.ActivePowerP - res.SmartMeter.Values.ActivePowerM) / 1e3, err
+	if m.usage == "pv" {
+		return -(res.SmartMeter.Values.ActivePowerP - res.SmartMeter.Values.ActivePowerM) / 1e3, err
+	} else {
+		return (res.SmartMeter.Values.ActivePowerP - res.SmartMeter.Values.ActivePowerM) / 1e3, err
+	}
 }
 
 var _ api.MeterEnergy = (*TqEM420)(nil)
 
 func (m *TqEM420) TotalEnergy() (float64, error) {
 	res, err := m.dataG()
-	return res.SmartMeter.Values.ActiveEnergyP / 1e3, err
+	return (res.SmartMeter.Values.ActiveEnergyP - res.SmartMeter.Values.ActiveEnergyM) / 1e3, err
 }
 
 var _ api.PhaseCurrents = (*TqEM420)(nil)

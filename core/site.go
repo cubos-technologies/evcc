@@ -239,6 +239,8 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		}
 	})
 
+	site.PowerForLoadpoint = make(map[*Loadpoint]float64)
+
 	return nil
 }
 
@@ -436,7 +438,7 @@ func (site *Site) updatePvMeters() {
 	}
 
 	var totalEnergy float64
-
+	site.mux.Lock()
 	site.pvPower = 0
 
 	mm := make([]meterMeasurement, len(site.pvMeters))
@@ -470,7 +472,7 @@ func (site *Site) updatePvMeters() {
 			Energy: energy,
 		}
 	}
-
+	site.mux.Unlock()
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
 	site.publish(keys.PvEnergy, totalEnergy)
@@ -948,7 +950,7 @@ func (site *Site) CalculateValues() {
 	// Verbraucher
 	homePower := pvPower - totalChargePower + batteryPower + gridPower
 	sumMinCurrent += homePower
-
+	site.publish(keys.HomePower, homePower)
 	// add battery charging power to homePower to ignore all consumption which does not occur on loadpoints
 	// fix for: https://github.com/evcc-io/evcc/issues/11032
 	nonChargePower := homePower + max(0, -site.batteryPower)
@@ -1075,7 +1077,7 @@ func (site *Site) CalculateValues() {
 			}
 		}
 	}
-	for j := maxPrio; j > 0; j-- {
+	for j := maxPrio - 1; j >= 0; j-- {
 		circuitcount := make(map[*api.Circuit]int)
 		circuitMaxPowerFromLoadpoints := make(map[*api.Circuit]float64)
 		for _, lp := range site.loadpoints {
@@ -1163,6 +1165,7 @@ func (site *Site) CalculateValues() {
 			}
 		}
 	}
+	site.Health.Update()
 	if site.GetBatteryDischargeControl() {
 		site.updateBatteryMode()
 	}
