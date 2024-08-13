@@ -279,6 +279,7 @@ func NewLoadpointFromConfig(log *util.Logger, settings *Settings, other map[stri
 	if lp.mode = lp.Mode_; lp.mode == "" {
 		lp.mode = api.ModeOff
 	}
+	lp.isUpdated = true
 
 	return lp, nil
 }
@@ -1275,7 +1276,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64) float6
 		effectiveCurrent /= 3.0
 	}
 	deltaCurrent := powerToCurrent(-sitePower, activePhases)
-	targetCurrent := max(effectiveCurrent+deltaCurrent, 0)
+	targetCurrent := max(-deltaCurrent, 0)
 
 	// in MinPV mode or under special conditions return at least minCurrent
 	/*if battery := batteryStart || batteryBuffered && lp.charging(); (mode == api.ModeMinPV || battery) && targetCurrent < minCurrent {

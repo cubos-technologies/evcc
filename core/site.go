@@ -487,6 +487,7 @@ func (site *Site) updateBatteryMeters() error {
 
 	var totalCapacity, totalEnergy float64
 
+	site.mux.Lock()
 	site.batteryPower = 0
 	site.batterySoc = 0
 
@@ -548,7 +549,7 @@ func (site *Site) updateBatteryMeters() error {
 			Controllable: controllable,
 		}
 	}
-
+	site.mux.Unlock()
 	site.publish(keys.BatteryCapacity, totalCapacity)
 
 	// convert weighed socs to total soc
@@ -792,6 +793,7 @@ func (site *Site) updateEnergyMeters() error {
 // Todo Comment Function
 func (site *Site) CalculateValues() {
 	// Todo rework naming of Variables
+	site.updateEnergyMeters()
 	var maxPowerLoadpoints_prio [maxPrio]float64
 	var minCurrentCharpoints_Prio [maxPrio]float64
 	var count_Loadpoints_Prio [maxPrio]int
@@ -802,8 +804,10 @@ func (site *Site) CalculateValues() {
 	sumMinCurrent := 0.0
 	maxCurrentCharpoints := 0.0
 	gridPower := site.gridPower
+	site.mux.Lock()
 	pvPower := max(0, site.pvPower)
 	batteryPower := site.batteryPower
+	site.mux.Unlock()
 	sumFlexCurrent := 0.0
 	sumSetCurrents := 0.0
 	for _, lp := range site.loadpoints {
@@ -948,7 +952,7 @@ func (site *Site) CalculateValues() {
 		site.publish(keys.PvPower, site.pvPower)
 	}
 	// Verbraucher
-	homePower := pvPower - totalChargePower + batteryPower + gridPower
+	homePower := pvPower - totalChargePower - batteryPower + gridPower
 	sumMinCurrent += homePower
 	site.publish(keys.HomePower, homePower)
 	// add battery charging power to homePower to ignore all consumption which does not occur on loadpoints
@@ -990,7 +994,8 @@ func (site *Site) CalculateValues() {
 	}
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
-	freePower := site.freePower_pid
+	freePower := -site.freePower_pid
+	site.publish("freePower", freePower)
 	freePowerInCircuit := make(map[*api.Circuit]float64)
 	for _, c := range site.circuitList {
 		if c != nil {
@@ -1175,9 +1180,7 @@ func (site *Site) CalculateValues() {
 
 func (site *Site) update_Loadpoint(lp *Loadpoint) {
 	lp.GetDataFromLoadpoint()
-	if site.newDataforLoadpoint[lp] {
-		lp.Update(site.PowerForLoadpoint[lp], false)
-	}
+	lp.Update(site.PowerForLoadpoint[lp], false)
 }
 
 // Function to Start Threads for all Loadpoints to Update
@@ -1362,7 +1365,7 @@ func (site *Site) Run(stopC chan struct{}, interval time.Duration) {
 
 	ticker_UpdateLoadpoint := time.NewTicker(interval)
 	ticker_CalculateValues := time.NewTicker(interval)
-	ticker_UpdateMeters := time.NewTicker(interval)
+	//ticker_UpdateMeters := time.NewTicker(interval)
 	// start immediately
 	site.updateEnergyMeters()
 	site.CalculateValues()
@@ -1374,8 +1377,8 @@ func (site *Site) Run(stopC chan struct{}, interval time.Duration) {
 			site.update_all_Loadpoints()
 		case <-ticker_CalculateValues.C:
 			go site.CalculateValues()
-		case <-ticker_UpdateMeters.C:
-			go site.updateEnergyMeters()
+		// case <-ticker_UpdateMeters.C:
+		// 	go site.updateEnergyMeters()
 		case lp := <-site.lpUpdateChan:
 			site.update_single_Loadpoint(lp)
 		case <-stopC:
