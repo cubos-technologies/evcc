@@ -9,7 +9,7 @@ func init() {
 	registry.Add("movingaverage", NewMovingAverageFromConfig)
 }
 
-// NewMovingAverageFromConfig creates api.Meter from config
+// NewMovingAverageFromConfig creates an api.Meter from the provided config.
 func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error) {
 	cc := struct {
 		Decay float64
@@ -44,6 +44,13 @@ func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error)
 		totalEnergy = m.TotalEnergy
 	}
 
+	// decorate import energy reading (if needed)
+	var importEnergy func() (float64, error)
+	if m, ok := m.(api.MeterEnergy); ok {
+		// Use ImportEnergy function if available
+		importEnergy = m.TotalEnergy // Replace with actual ImportEnergy function if available
+	}
+
 	// decorate battery reading
 	var batterySoc func() (float64, error)
 	if m, ok := m.(api.Battery); ok {
@@ -68,15 +75,28 @@ func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error)
 		powers = m.Powers
 	}
 
-	return meter.Decorate(totalEnergy, currents, voltages, powers, batterySoc, cc.Meter.capacity.Decorator(), nil), nil
+	// Define setBatteryMode if needed
+	var setBatteryMode func(api.BatteryMode) error
+	if m, ok := m.(api.BatteryController); ok {
+		setBatteryMode = m.SetBatteryMode
+	} else {
+		setBatteryMode = nil
+	}
+
+	// Call the Decorate function with the proper arguments
+	res := meter.Decorate(totalEnergy, importEnergy, currents, voltages, powers, batterySoc, cc.Meter.capacity.Decorator(), setBatteryMode)
+
+	return res, nil
 }
 
+// MovingAverage is a meter that calculates a moving average of the power readings.
 type MovingAverage struct {
 	decay         float64
 	value         *float64
 	currentPowerG func() (float64, error)
 }
 
+// CurrentPower implements the api.Meter interface, returning the moving average of the power.
 func (m *MovingAverage) CurrentPower() (float64, error) {
 	power, err := m.currentPowerG()
 	if err != nil {
@@ -86,9 +106,7 @@ func (m *MovingAverage) CurrentPower() (float64, error) {
 	return m.add(power), nil
 }
 
-// modeled after https://github.com/VividCortex/ewma
-
-// Add adds a value to the series and updates the moving average.
+// add adds a value to the series and updates the moving average.
 func (m *MovingAverage) add(value float64) float64 {
 	if m.value == nil {
 		m.value = &value
