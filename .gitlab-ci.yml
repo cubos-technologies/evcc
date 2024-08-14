@@ -85,6 +85,8 @@ build docker:
 # deploy template. prefix '.' means that the job is not run by default.
 .deploy docker:
   stage: deploy
+  tags:
+    - deploy
   image: docker:24.0.7
   services:
     - name: docker:24.0.7-git # *-git is built on *-dind
