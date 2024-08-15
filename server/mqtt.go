@@ -25,7 +25,7 @@ type MQTT struct {
 }
 
 // NewMQTT creates MQTT server
-func NewMQTT(root string, site site.API) (*MQTT, error) {
+func NewMQTT(root string, site site.API, shutdown func()) (*MQTT, error) {
 	m := &MQTT{
 		log:     util.NewLogger("mqtt"),
 		Handler: mqtt.Instance,
@@ -35,7 +35,7 @@ func NewMQTT(root string, site site.API) (*MQTT, error) {
 
 	err := m.Handler.Cleanup(m.root, true)
 	if err == nil {
-		err = m.Listen(site)
+		err = m.Listen(site, shutdown)
 	}
 	if err != nil {
 		err = fmt.Errorf("mqtt: %w", err)
@@ -147,14 +147,21 @@ func (m *MQTT) publish(topic string, retained bool, payload interface{}) {
 	m.publishComplex(topic, retained, payload)
 }
 
-func (m *MQTT) Listen(site site.API) error {
+func (m *MQTT) Listen(site site.API, shutdown func()) error {
 	if err := m.listenSiteSetters(m.root+"/site", site); err != nil {
 		return err
 	}
 
-	// if err := m.listenMeterConfig(m.root+"/meter/+", site); err != nil {
-	// 	return err
-	// }
+	for _, s := range []setterWithTopic{
+		{m.root + "/shutdown", func(payload string, full_topic string) error {
+			shutdown()
+			return nil
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(s.topic, s.fun); err != nil {
+			return err
+		}
+	}
 
 	if err := m.listenConfig(m.root, site); err != nil {
 		return err

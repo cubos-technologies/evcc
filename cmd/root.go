@@ -211,13 +211,6 @@ func runRoot(cmd *cobra.Command, args []string) {
 	valueChan <- util.Param{Key: keys.Sponsor, Val: sponsor.Status()}
 
 	// setup mqtt publisher
-	if err == nil && conf.Mqtt.Broker != "" {
-		var mqtt *server.MQTT
-		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site)
-		if err == nil {
-			go mqtt.Run(site, pipe.NewDropper(append(ignoreMqtt, ignoreEmpty)...).Pipe(tee.Attach()))
-		}
-	}
 
 	// announce on mDNS
 	if err == nil && strings.HasSuffix(conf.Network.Host, ".local") {
@@ -264,6 +257,17 @@ func runRoot(cmd *cobra.Command, args []string) {
 
 	// allow web access for vehicles
 	configureAuth(conf.Network, config.Instances(config.Vehicles().Devices()), httpd.Router(), valueChan)
+
+	if err == nil && conf.Mqtt.Broker != "" {
+		var mqtt *server.MQTT
+		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site, func() {
+			log.INFO.Println("evcc was stopped by user. OS should restart the service. Or restart manually.")
+			once.Do(func() { close(stopC) }) // signal loop to end
+		})
+		if err == nil {
+			go mqtt.Run(site, pipe.NewDropper(append(ignoreMqtt, ignoreEmpty)...).Pipe(tee.Attach()))
+		}
+	}
 
 	httpd.RegisterSystemHandler(valueChan, cache, func() {
 		log.INFO.Println("evcc was stopped by user. OS should restart the service. Or restart manually.")
