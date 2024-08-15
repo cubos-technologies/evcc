@@ -5,16 +5,17 @@ import (
 	"github.com/evcc-io/evcc/util"
 )
 
+// Initialize the meter package by registering the "movingaverage" meter type.
 func init() {
 	registry.Add("movingaverage", NewMovingAverageFromConfig)
 }
 
-// NewMovingAverageFromConfig creates an api.Meter from the provided config.
+// NewMovingAverageFromConfig creates an api.Meter from the provided configuration.
 func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error) {
 	cc := struct {
 		Decay float64
 		Meter struct {
-			capacity `mapstructure:",squash"`
+			Capacity float64
 			Type     string
 			Other    map[string]interface{} `mapstructure:",remain"`
 		}
@@ -38,53 +39,52 @@ func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error)
 
 	meter, _ := NewConfigurable(mav.CurrentPower)
 
-	// decorate energy reading
+	// Decorate energy reading
 	var totalEnergy func() (float64, error)
-	if m, ok := m.(api.MeterEnergy); ok {
-		totalEnergy = m.TotalEnergy
+	if me, ok := m.(api.MeterEnergy); ok {
+		totalEnergy = me.TotalEnergy
 	}
 
-	// decorate import energy reading (if needed)
-	var importEnergy func() (float64, error)
-	if m, ok := m.(api.MeterEnergy); ok {
-		// Use ImportEnergy function if available
-		importEnergy = m.TotalEnergy // Replace with actual ImportEnergy function if available
+	// Decorate export energy reading (if needed)
+	var exportEnergy func() (float64, error)
+	if ex, ok := m.(api.ExportEnergy); ok {
+		exportEnergy = ex.ExportEnergy
 	}
 
-	// decorate battery reading
+	// Decorate battery state of charge reading
 	var batterySoc func() (float64, error)
-	if m, ok := m.(api.Battery); ok {
-		batterySoc = m.Soc
+	if b, ok := m.(api.Battery); ok {
+		batterySoc = b.Soc
 	}
 
-	// decorate currents reading
+	// Decorate currents reading
 	var currents func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhaseCurrents); ok {
-		currents = m.Currents
+	if c, ok := m.(api.PhaseCurrents); ok {
+		currents = c.Currents
 	}
 
-	// decorate voltages reading
+	// Decorate voltages reading
 	var voltages func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhaseVoltages); ok {
-		voltages = m.Voltages
+	if v, ok := m.(api.PhaseVoltages); ok {
+		voltages = v.Voltages
 	}
 
-	// decorate powers reading
+	// Decorate powers reading
 	var powers func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhasePowers); ok {
-		powers = m.Powers
+	if p, ok := m.(api.PhasePowers); ok {
+		powers = p.Powers
 	}
 
 	// Define setBatteryMode if needed
 	var setBatteryMode func(api.BatteryMode) error
-	if m, ok := m.(api.BatteryController); ok {
-		setBatteryMode = m.SetBatteryMode
+	if bc, ok := m.(api.BatteryController); ok {
+		setBatteryMode = bc.SetBatteryMode
 	} else {
 		setBatteryMode = nil
 	}
 
 	// Call the Decorate function with the proper arguments
-	res := meter.Decorate(totalEnergy, importEnergy, currents, voltages, powers, batterySoc, cc.Meter.capacity.Decorator(), setBatteryMode)
+	res := meter.Decorate(totalEnergy, exportEnergy, currents, voltages, powers, batterySoc, nil, setBatteryMode)
 
 	return res, nil
 }
