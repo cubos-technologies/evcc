@@ -182,3 +182,12 @@ func (m *TqEM420) Voltages() (float64, float64, float64, error) {
 	}
 	return res.SmartMeter.Values.VoltageL1 / 1e3, res.SmartMeter.Values.VoltageL2 / 1e3, res.SmartMeter.Values.VoltageL3 / 1e3, nil
 }
+
+// Implementing the ExportEnergy method for the api.ExportEnergy interface
+func (m *TqEM420) ExportEnergy() (float64, error) {
+	res, err := m.dataG()
+	return res.SmartMeter.Values.ActiveEnergyM / 1e3, err
+}
+
+// Ensuring TqEM420 implements the api.ExportEnergy interface
+var _ api.ExportEnergy = (*TqEM420)(nil)
