@@ -12,17 +12,17 @@ func init() {
 	registry.Add(api.Custom, NewConfigurableFromConfig)
 }
 
-//go:generate go run ../cmd/tools/decorate.go -f decorateMeter -b api.Meter -t "api.MeterEnergy,TotalEnergy,func() (float64, error)" -t "api.PhaseCurrents,Currents,func() (float64, float64, float64, error)" -t "api.PhaseVoltages,Voltages,func() (float64, float64, float64, error)" -t "api.PhasePowers,Powers,func() (float64, float64, float64, error)" -t "api.Battery,Soc,func() (float64, error)" -t "api.BatteryCapacity,Capacity,func() float64" -t "api.BatteryController,SetBatteryMode,func(api.BatteryMode) error" -t "api.ImportEnergy,ImportEnergy,func() (float64, error)"
+//go:generate go run ../cmd/tools/decorate.go -f decorateMeter -b api.Meter -t "api.MeterEnergy,TotalEnergy,func() (float64, error)" -t "api.MeterEnergy,exportEnergy,func() (float64, error)" -t "api.PhaseCurrents,Currents,func() (float64, float64, float64, error)" -t "api.PhaseVoltages,Voltages,func() (float64, float64, float64, error)" -t "api.PhasePowers,Powers,func() (float64, float64, float64, error)" -t "api.Battery,Soc,func() (float64, error)" -t "api.BatteryCapacity,Capacity,func() float64" -t "api.BatteryController,SetBatteryMode,func(api.BatteryMode) error"
 
 // NewConfigurableFromConfig creates api.Meter from config
 func NewConfigurableFromConfig(other map[string]interface{}) (api.Meter, error) {
 	cc := struct {
 		Power        provider.Config
 		Energy       *provider.Config  // optional
-		ImportEnergy *provider.Config  // optional
 		Currents     []provider.Config // optional
 		Voltages     []provider.Config // optional
 		Powers       []provider.Config // optional
+		ExportEnergy *provider.Config  // optional
 
 		// battery
 		capacity    `mapstructure:",squash"`
@@ -46,11 +46,11 @@ func NewConfigurableFromConfig(other map[string]interface{}) (api.Meter, error) 
 		return nil, err
 	}
 
-	var importEnergyG func() (float64, error)
-	if cc.ImportEnergy != nil {
-		importEnergyG, err = provider.NewFloatGetterFromConfig(*cc.ImportEnergy)
+	var exportEnergyG func() (float64, error)
+	if cc.ExportEnergy != nil {
+		exportEnergyG, err = provider.NewFloatGetterFromConfig(*cc.ExportEnergy)
 		if err != nil {
-			return nil, fmt.Errorf("import energy: %w", err)
+			return nil, fmt.Errorf("Export energy: %w", err)
 		}
 	}
 
@@ -90,18 +90,26 @@ func NewConfigurableFromConfig(other map[string]interface{}) (api.Meter, error) 
 		batModeS = cc.battery.ModeController(modeS)
 	}
 
-	res := m.Decorate(energyG, importEnergyG, currentsG, voltagesG, powersG, socG, cc.capacity.Decorator(), batModeS)
+	// Korrekte Übergabe der Argumente an decorateMeter
+	res := m.Decorate(
+		energyG,                 // func() (float64, error)
+		exportEnergyG,           // func() (float64, error)
+		currentsG,               // func() (float64, float64, float64, error)
+		voltagesG,               // func() (float64, float64, float64, error)
+		powersG,                 // func() (float64, float64, float64, error)
+		socG,                    // func() (float64, error)
+		cc.capacity.Decorator(), // func() float64
+		batModeS,                // func(api.BatteryMode) error
+	)
 
 	return res, nil
 }
 
 // NewConfigurable creates a new meter
 func NewConfigurable(currentPowerG func() (float64, error)) (*Meter, error) {
-	log := util.NewLogger("meter")
-
 	m := &Meter{
 		currentPowerG: currentPowerG,
-		log:           log,
+		logger:        util.NewLogger("meter"), // Logger initialisieren
 	}
 	return m, nil
 }
@@ -109,24 +117,23 @@ func NewConfigurable(currentPowerG func() (float64, error)) (*Meter, error) {
 // Meter is an api.Meter implementation with configurable getters and setters.
 type Meter struct {
 	currentPowerG func() (float64, error)
-	importEnergyG func() (float64, error)
-	log           *util.Logger
+	exportEnergyG func() (float64, error) // Added for exportEnergy
+	logger        *util.Logger            // Logger hinzufügen
 }
 
 // Decorate attaches additional capabilities to the base meter
 func (m *Meter) Decorate(
 	totalEnergy func() (float64, error),
-	importEnergy func() (float64, error),
+	exportEnergy func() (float64, error),
 	currents func() (float64, float64, float64, error),
 	voltages func() (float64, float64, float64, error),
 	powers func() (float64, float64, float64, error),
 	batterySoc func() (float64, error),
 	capacity func() float64,
 	setBatteryMode func(api.BatteryMode) error,
-
 ) api.Meter {
-	m.importEnergyG = importEnergy
-	return decorateMeter(m, totalEnergy, currents, voltages, powers, batterySoc, capacity, setBatteryMode, importEnergy)
+	m.exportEnergyG = exportEnergy
+	return decorateMeter(m, totalEnergy, currents, voltages, powers, batterySoc, capacity, setBatteryMode, exportEnergy)
 }
 
 // CurrentPower implements the api.Meter interface
@@ -134,20 +141,19 @@ func (m *Meter) CurrentPower() (float64, error) {
 	return m.currentPowerG()
 }
 
-// ImportEnergy implements the api.Meter interface
-func (m *Meter) ImportEnergy() (float64, error) {
-	m.log.DEBUG.Println("ImportEnergy method called") // Add this line to confirm method execution
-
-	if m.importEnergyG != nil {
-		importEnergy, err := m.importEnergyG()
-		if err == nil {
-			m.log.DEBUG.Printf("ImportEnergy: %.3f kWh", importEnergy)
-		} else {
-			m.log.ERROR.Printf("Failed to get ImportEnergy: %v", err)
-		}
-		return importEnergy, err
+// exportEnergy implements the api.Meter interface
+func (m *Meter) exportEnergy() (float64, error) {
+	if m.exportEnergyG == nil {
+		m.logger.DEBUG.Println("exportEnergyG is nil")
+		return 0, fmt.Errorf("exportEnergyG is nil")
 	}
 
-	m.log.ERROR.Println("ImportEnergy not configured") // Log an error if not configured
-	return 0, fmt.Errorf("ImportEnergy not configured")
+	m.logger.DEBUG.Println("Calling exportEnergyG...")
+	energy, err := m.exportEnergyG()
+	if err != nil {
+		m.logger.DEBUG.Printf("Error getting export energy: %v", err)
+	} else {
+		m.logger.DEBUG.Printf("Export energy: %f", energy)
+	}
+	return energy, err
 }
