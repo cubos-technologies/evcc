@@ -35,6 +35,8 @@ import (
 
 const standbyPower = 10 // consider less than 10W as charger in standby
 
+const keyexportEnergy = "exportEnergy" // Export energy key
+
 // updater abstracts the Loadpoint implementation for testing
 type updater interface {
 	loadpoint.API
@@ -593,6 +595,23 @@ func (site *Site) updateBatteryMeters() error {
 	return nil
 }
 
+// exportEnergy calculates and returns the total energy exported to the grid.
+func (site *Site) exportEnergy() (float64, error) {
+	// Check if site.gridMeter implements the api.MeterExporter interface
+	if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
+		energy, err := exportMeter.ExportEnergy()
+		if err != nil {
+			site.log.ERROR.Printf("grid export energy: %v", err)
+			return 0, err
+		}
+
+		site.log.DEBUG.Printf("grid export energy: %.0fWh", energy)
+		return energy, nil
+	}
+
+	return 0, fmt.Errorf("grid meter does not support export energy measurement")
+}
+
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
 func (site *Site) updateGridMeter() error {
 	if site.gridMeter == nil {
@@ -643,6 +662,15 @@ func (site *Site) updateGridMeter() error {
 	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
 		if f, err := energyMeter.TotalEnergy(); err == nil {
 			site.publish(keys.GridEnergy, f)
+
+			// New exportEnergy calculation and publishing
+			exportEnergy, err := site.exportEnergy()
+			if err == nil {
+				site.publish(keyexportEnergy, exportEnergy)
+			} else {
+				site.log.ERROR.Printf("export energy: %v", err)
+			}
+
 		} else {
 			site.log.ERROR.Printf("grid energy: %v", err)
 		}
