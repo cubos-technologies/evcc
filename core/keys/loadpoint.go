@@ -28,6 +28,7 @@ const (
 	Enabled   = "enabled"   // loadpoint enabled
 	Connected = "connected" // connected
 	Charging  = "charging"  // charging
+	Error     = "error"     // loadpoint error
 
 	// smart charging
 	SmartCostActive    = "smartCostActive"    // smart cost active

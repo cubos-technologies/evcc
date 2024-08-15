@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -42,18 +43,26 @@ type updater interface {
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Power  float64 `json:"power"`
-	Energy float64 `json:"energy,omitempty"`
+	Id       string     `json:"id"`
+	Power    float64    `json:"power"`
+	Energy   float64    `json:"energy,omitempty"`
+	Currents [3]float64 `json:"currents,omitempty"`
+	Voltages [3]float64 `json:"voltages,omitempty"`
 }
+
+type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
+	Id           string  `json:"id"`
 	Power        float64 `json:"power"`
 	Energy       float64 `json:"energy,omitempty"`
 	Soc          float64 `json:"soc,omitempty"`
 	Capacity     float64 `json:"capacity,omitempty"`
 	Controllable bool    `json:"controllable"`
 }
+
+type BatteryMeasurement = batteryMeasurement
 
 var _ site.API = (*Site)(nil)
 
@@ -410,7 +419,7 @@ func (site *Site) DumpConfig() {
 		lp.log.INFO.Printf("  meters:      charge %s", presence[lp.HasChargeMeter()])
 
 		if lp.HasChargeMeter() {
-			lp.log.INFO.Printf(meterCapabilities("charge", lp.chargeMeter))
+			lp.log.INFO.Println(meterCapabilities("charge", lp.chargeMeter))
 		}
 	}
 }
@@ -471,9 +480,34 @@ func (site *Site) updatePvMeters() {
 			}
 		}
 
+		var currents [3]float64
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %d currents: %v", i+1, currents)
+			} else {
+				site.log.ERROR.Printf("pv %d currents: %v", i+1, err)
+			}
+		}
+
+		var voltages [3]float64
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %d voltages: %v", i+1, voltages)
+			} else {
+				site.log.ERROR.Printf("pv %d voltages: %v", i+1, err)
+			}
+		} else {
+			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
+		}
+
 		mm[i] = meterMeasurement{
-			Power:  power,
-			Energy: energy,
+			Id:       strconv.Itoa(i),
+			Power:    power,
+			Energy:   energy,
+			Currents: currents,
+			Voltages: voltages,
 		}
 	}
 
@@ -578,6 +612,7 @@ func (site *Site) updateBatteryMeters() error {
 		_, controllable := meter.(api.BatteryController)
 
 		mm[i] = batteryMeasurement{
+			Id:           strconv.Itoa(i),
 			Power:        power,
 			Energy:       energy,
 			Soc:          batSoc,
@@ -640,6 +675,14 @@ func (site *Site) updateGridMeter() error {
 			site.publish(keys.GridCurrents, phases)
 		} else {
 			site.log.ERROR.Printf("grid currents: %v", err)
+		}
+
+		if u1, u2, u3, err := site.gridMeter.(api.PhaseVoltages).Voltages(); err == nil {
+			phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
+			site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
+			site.publish(keys.GridVoltages, phases)
+		} else {
+			site.log.ERROR.Printf("grid voltages: %v", err)
 		}
 	}
 
@@ -726,6 +769,14 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 				site.log.DEBUG.Printf("aux power %d: %.0fW", i+1, power)
 			} else {
 				site.log.ERROR.Printf("aux meter %d: %v", i+1, err)
+			}
+
+			if m, ok := meter.(api.PhaseCurrents); ok {
+				mm[i].Currents[0], mm[i].Currents[1], mm[i].Currents[2], _ = m.Currents()
+			}
+
+			if m, ok := meter.(api.PhaseVoltages); ok {
+				mm[i].Voltages[0], mm[i].Voltages[1], mm[i].Voltages[2], _ = m.Voltages()
 			}
 		}
 

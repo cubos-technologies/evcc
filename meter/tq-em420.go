@@ -100,10 +100,12 @@ func NewTqEm420FromConfig(other map[string]interface{}) (api.Meter, error) {
 		URI    string
 		Token  string
 		Device string
+		Invert bool
 		Cache  time.Duration
 		Usage  string
 	}{
-		Cache: time.Second,
+		Invert: false,
+		Cache:  time.Second,
 	}
 
 	if err := util.DecodeOther(other, &cc); err != nil {

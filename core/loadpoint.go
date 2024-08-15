@@ -677,6 +677,7 @@ func (lp *Loadpoint) Prepare(uiChan chan<- util.Param, pushChan chan<- push.Even
 		}
 	} else {
 		lp.log.ERROR.Printf("charger enabled: %v", err)
+		lp.publish(keys.Error, err)
 	}
 
 	// set vehicle polling mode
@@ -1220,6 +1221,7 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) in
 		if elapsed := lp.clock.Since(lp.phaseTimer); elapsed >= lp.Disable.Delay {
 			if err := lp.scalePhases(1); err != nil {
 				lp.log.ERROR.Println(err)
+				lp.publish(keys.Error, err)
 			}
 			return 1
 		}
@@ -1249,6 +1251,7 @@ func (lp *Loadpoint) pvScalePhases(sitePower, minCurrent, maxCurrent float64) in
 		if elapsed := lp.clock.Since(lp.phaseTimer); elapsed >= lp.Enable.Delay {
 			if err := lp.scalePhases(3); err != nil {
 				lp.log.ERROR.Println(err)
+				lp.publish(keys.Error, err)
 			}
 			return 3
 		}
@@ -1396,10 +1399,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batter
 
 // UpdateChargePowerAndCurrents updates charge meter power and currents for load management
 func (lp *Loadpoint) UpdateChargePowerAndCurrents() {
-	bo := backoff.NewExponentialBackOff()
-	bo.MaxElapsedTime = time.Second
-
-	if power, err := backoff.RetryWithData(lp.chargeMeter.CurrentPower, bo); err == nil {
+	if power, err := backoff.RetryWithData(lp.chargeMeter.CurrentPower, bo()); err == nil {
 		lp.Lock()
 		lp.chargePower = power // update value if no error
 		lp.Unlock()
@@ -1415,6 +1415,7 @@ func (lp *Loadpoint) UpdateChargePowerAndCurrents() {
 		}
 	} else {
 		lp.log.ERROR.Printf("charge power: %v", err)
+		lp.publish(keys.Error, err)
 	}
 
 	// update charge currents
@@ -1436,8 +1437,9 @@ func (lp *Loadpoint) UpdateChargePowerAndCurrents() {
 		lp.publish(keys.ChargeCurrents, lp.chargeCurrents)
 
 		return nil
-	}, bo); err != nil {
+	}, bo()); err != nil {
 		lp.log.ERROR.Printf("charge currents: %v", err)
+		lp.publish(keys.Error, err.Error())
 	}
 }
 
@@ -1480,6 +1482,7 @@ func (lp *Loadpoint) updateChargeVoltages() {
 	u1, u2, u3, err := phaseMeter.Voltages()
 	if err != nil {
 		lp.log.ERROR.Printf("charge meter: %v", err)
+		lp.publish(keys.Error, err)
 		return
 	}
 
@@ -1522,12 +1525,14 @@ func (lp *Loadpoint) publishChargeProgress() {
 		}
 	} else {
 		lp.log.ERROR.Printf("charge rater: %v", err)
+		lp.publish(keys.Error, err)
 	}
 
 	if d, err := lp.chargeTimer.ChargeDuration(); err == nil {
 		lp.chargeDuration = d.Round(time.Second)
 	} else {
 		lp.log.ERROR.Printf("charge timer: %v", err)
+		lp.publish(keys.Error, err)
 	}
 
 	// TODO check if "session" prefix required?
@@ -1566,6 +1571,7 @@ func (lp *Loadpoint) publishSocAndRange() {
 				lp.socUpdated = time.Time{}
 			} else {
 				lp.log.ERROR.Printf("vehicle soc: %v", err)
+				lp.publish(keys.Error, err)
 			}
 
 			return
@@ -1586,6 +1592,7 @@ func (lp *Loadpoint) publishSocAndRange() {
 				lp.publish(keys.VehicleLimitSoc, float64(limit))
 			} else if !errors.Is(err, api.ErrNotAvailable) {
 				lp.log.ERROR.Printf("vehicle soc limit: %v", err)
+				lp.publish(keys.Error, err)
 			}
 		}
 
@@ -1607,6 +1614,7 @@ func (lp *Loadpoint) publishSocAndRange() {
 				lp.publish(keys.VehicleRange, rng)
 			} else {
 				lp.log.ERROR.Printf("vehicle range: %v", err)
+				lp.publish(keys.Error, err)
 			}
 		}
 
@@ -1697,6 +1705,7 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 	welcomeCharge, err := lp.updateChargerStatus()
 	if err != nil {
 		lp.log.ERROR.Println(err)
+		lp.publish(keys.Error, err)
 		return
 	}
 
@@ -1722,6 +1731,7 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 	// sync settings with charger
 	if err := lp.syncCharger(); err != nil {
 		lp.log.ERROR.Println(err)
+		lp.publish(keys.Error, err)
 		return
 	}
 
@@ -1817,5 +1827,6 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 	// log any error
 	if err != nil {
 		lp.log.ERROR.Println(err)
+		lp.publish(keys.Error, err)
 	}
 }
