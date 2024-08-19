@@ -66,17 +66,23 @@ type Mqtt struct {
 func (m Mqtt) Redacted() any {
 	// TODO add masked password
 	return struct {
-		Broker   string `json:"broker"`
-		Topic    string `json:"topic"`
-		User     string `json:"user"`
-		ClientID string `json:"clientID"`
-		Insecure bool   `json:"insecure"`
+		Broker     string `json:"broker"`
+		Topic      string `json:"topic"`
+		User       string `json:"user"`
+		ClientID   string `json:"clientID"`
+		Insecure   bool   `json:"insecure"`
+		CaCert     string `json:"caCert"`
+		ClientCert string `json:"clientCert"`
+		ClientKey  string `json:"clientKey"`
 	}{
-		Broker:   m.Broker,
-		Topic:    m.Topic,
-		User:     m.User,
-		ClientID: m.ClientID,
-		Insecure: m.Insecure,
+		Broker:     m.Broker,
+		Topic:      m.Topic,
+		User:       m.User,
+		ClientID:   m.ClientID,
+		Insecure:   m.Insecure,
+		CaCert:     m.CaCert,
+		ClientCert: m.ClientCert,
+		ClientKey:  m.ClientKey,
 	}
 }
 
