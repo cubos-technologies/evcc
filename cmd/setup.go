@@ -1001,7 +1001,7 @@ func configureLoadpoints(conf globalconfig.All) error {
 	}
 
 	if len(config.Loadpoints().Devices()) == 0 {
-		return errors.New("missing loadpoints")
+		log.WARN.Printf("no loadpoints configured")
 	}
 
 	return nil
