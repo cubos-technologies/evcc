@@ -32,9 +32,9 @@ type Config struct {
 	Password   string `json:"password"`
 	ClientID   string `json:"clientID"`
 	Insecure   bool   `json:"insecure"`
-	CaCert     string `json:"ca_cert"`
-	ClientCert string `json:"client_cert"`
-	ClientKey  string `json:"client_key"`
+	CaCert     string `json:"caCert"`
+	ClientCert string `json:"clientCert"`
+	ClientKey  string `json:"clientKey"`
 }
 
 // Client encapsulates mqtt publish/subscribe functions

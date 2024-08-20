@@ -9,13 +9,13 @@ password: {{ .password }}
 {{- if ne .timeout "30s" }}
 timeout: {{ .timeout }}
 {{- end }}
-{{- if ne .ca_cert "" }}
-ca_cert: {{ .ca_cert }}
+{{- if ne .caCert "" }}
+caCert: {{ .caCert }}
 {{- end }}
-{{- if ne .client_cert "" }}
-client_cert: {{ .client_cert }}
+{{- if ne .clientCert "" }}
+clientCert: {{ .clientCert }}
 {{- end }}
-{{- if ne .client_key "" }}
-client_key: {{ .client_key }}
+{{- if ne .clientKey "" }}
+clientKey: {{ .clientKey }}
 {{- end }}
 {{- end }}
