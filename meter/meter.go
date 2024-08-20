@@ -116,7 +116,6 @@ func NewConfigurable(currentPowerG func() (float64, error)) (*Meter, error) {
 // Meter is an api.Meter implementation with configurable getters and setters.
 type Meter struct {
 	currentPowerG func() (float64, error)
-	exportEnergyG func() (float64, error) // Added for exportEnergy
 }
 
 // Decorate attaches additional capabilities to the base meter
@@ -130,7 +129,6 @@ func (m *Meter) Decorate(
 	capacity func() float64,
 	setBatteryMode func(api.BatteryMode) error,
 ) api.Meter {
-	m.exportEnergyG = exportEnergy
 	return decorateMeter(m, totalEnergy, currents, voltages, powers, batterySoc, capacity, setBatteryMode, exportEnergy)
 }
 
