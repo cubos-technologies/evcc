@@ -5,17 +5,16 @@ import (
 	"github.com/evcc-io/evcc/util"
 )
 
-// Initialize the meter package by registering the "movingaverage" meter type.
 func init() {
 	registry.Add("movingaverage", NewMovingAverageFromConfig)
 }
 
-// NewMovingAverageFromConfig creates an api.Meter from the provided configuration.
+// NewMovingAverageFromConfig creates api.Meter from config
 func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error) {
 	cc := struct {
 		Decay float64
 		Meter struct {
-			Capacity float64
+			capacity `mapstructure:",squash"`
 			Type     string
 			Other    map[string]interface{} `mapstructure:",remain"`
 		}
