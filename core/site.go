@@ -710,18 +710,17 @@ func (site *Site) updateGridMeter() error {
 	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
 		if f, err := energyMeter.TotalEnergy(); err == nil {
 			site.publish(keys.GridEnergy, f)
-
-			// New exportEnergy calculation and publishing
-			exportEnergy, err := site.exportEnergy()
-			if err == nil {
-				site.publish(keyexportEnergy, exportEnergy)
-			} else {
-				site.log.ERROR.Printf("export energy: %v", err)
-			}
-
 		} else {
 			site.log.ERROR.Printf("grid energy: %v", err)
 		}
+	}
+
+	// New exportEnergy calculation and publishing
+	exportEnergy, err := site.exportEnergy()
+	if err == nil {
+		site.publish(keyexportEnergy, exportEnergy)
+	} else {
+		site.log.ERROR.Printf("export energy: %v", err)
 	}
 
 	return nil
