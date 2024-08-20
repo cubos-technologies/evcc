@@ -35,8 +35,6 @@ import (
 
 const standbyPower = 10 // consider less than 10W as charger in standby
 
-const keyexportEnergy = "exportEnergy" // Export energy key
-
 // updater abstracts the Loadpoint implementation for testing
 type updater interface {
 	loadpoint.API
@@ -438,7 +436,7 @@ func (site *Site) updatePvMeters() {
 		return
 	}
 
-	var totalEnergy float64
+	var totalExportEnergy float64
 
 	site.pvPower = 0
 
@@ -457,17 +455,18 @@ func (site *Site) updatePvMeters() {
 			site.log.ERROR.Printf("pv %d power: %v", i+1, err)
 		}
 
-		// pv energy (production)
-		var energy float64
-		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
-			energy, err = m.TotalEnergy()
+		// pv export energy
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				totalEnergy += energy
+				totalExportEnergy += exportEnergy
+				site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, exportEnergy)
 			} else {
-				site.log.ERROR.Printf("pv %d energy: %v", i+1, err)
+				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
 			}
 		}
 
+		// currents and voltages handling
 		var currents [3]float64
 		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
 			currents[0], currents[1], currents[2], err = m.Currents()
@@ -493,7 +492,7 @@ func (site *Site) updatePvMeters() {
 		mm[i] = meterMeasurement{
 			Id:       strconv.Itoa(i),
 			Power:    power,
-			Energy:   energy,
+			Energy:   totalExportEnergy,
 			Currents: currents,
 			Voltages: voltages,
 		}
@@ -501,7 +500,6 @@ func (site *Site) updatePvMeters() {
 
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
-	site.publish(keys.PvEnergy, totalEnergy)
 	site.publish(keys.Pv, mm)
 }
 
@@ -511,7 +509,7 @@ func (site *Site) updateBatteryMeters() error {
 		return nil
 	}
 
-	var totalCapacity, totalEnergy float64
+	var totalCapacity, totalExportEnergy float64
 
 	site.batteryPower = 0
 	site.batterySoc = 0
@@ -530,14 +528,14 @@ func (site *Site) updateBatteryMeters() error {
 			site.log.DEBUG.Printf("battery %d power: %.0fW", i+1, power)
 		}
 
-		// battery energy (discharge)
-		var energy float64
-		if m, ok := meter.(api.MeterEnergy); ok {
-			energy, err = m.TotalEnergy()
+		// battery export energy
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				totalEnergy += energy
+				totalExportEnergy += exportEnergy
+				site.log.DEBUG.Printf("battery %d export energy: %.0fWh", i+1, exportEnergy)
 			} else {
-				site.log.ERROR.Printf("battery %d energy: %v", i+1, err)
+				site.log.ERROR.Printf("battery %d export energy: %v", i+1, err)
 			}
 		}
 
@@ -569,7 +567,7 @@ func (site *Site) updateBatteryMeters() error {
 		mm[i] = batteryMeasurement{
 			Id:           strconv.Itoa(i),
 			Power:        power,
-			Energy:       energy,
+			Energy:       totalExportEnergy,
 			Soc:          batSoc,
 			Capacity:     capacity,
 			Controllable: controllable,
@@ -589,74 +587,9 @@ func (site *Site) updateBatteryMeters() error {
 
 	site.log.DEBUG.Printf("battery power: %.0fW", site.batteryPower)
 	site.publish(keys.BatteryPower, site.batteryPower)
-	site.publish(keys.BatteryEnergy, totalEnergy)
 	site.publish(keys.Battery, mm)
 
-	return nil
-}
-
-// exportEnergy calculates and returns the total energy exported to the grid, PV, and battery.
-func (site *Site) exportEnergy() (float64, error) {
-	totalExportEnergy := 0.0
-
-	// Grid Meter Export Energy
-	if site.gridMeter != nil {
-		if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
-			energy, err := exportMeter.ExportEnergy()
-			if err != nil {
-				site.log.ERROR.Printf("grid export energy: %v", err)
-				return 0, err
-			}
-			site.log.DEBUG.Printf("grid export energy: %.0fWh", energy)
-			totalExportEnergy += energy
-		} else {
-			site.log.WARN.Println("grid meter does not support export energy measurement")
-		}
-	}
-
-	// PV Meters Export Energy
-	for i, meter := range site.pvMeters {
-		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			energy, err := exportMeter.ExportEnergy()
-			if err != nil {
-				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
-				return totalExportEnergy, err
-			}
-			site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, energy)
-			totalExportEnergy += energy
-		} else {
-			site.log.WARN.Printf("pv meter %d does not support export energy measurement", i+1)
-		}
-	}
-
-	// Battery Meters Export Energy
-	for i, meter := range site.batteryMeters {
-		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			energy, err := exportMeter.ExportEnergy()
-			if err != nil {
-				site.log.ERROR.Printf("battery %d export energy: %v", i+1, err)
-				return totalExportEnergy, err
-			}
-			site.log.DEBUG.Printf("battery %d export energy: %.0fWh", i+1, energy)
-			totalExportEnergy += energy
-		} else {
-			site.log.WARN.Printf("battery meter %d does not support export energy measurement", i+1)
-		}
-	}
-
-	site.log.DEBUG.Printf("total export energy: %.0fWh", totalExportEnergy)
-	return totalExportEnergy, nil
-}
-
-func (site *Site) updateExportEnergy() error {
-	totalExportEnergy, err := site.exportEnergy()
-	if err != nil {
-		return err
-	}
-
-	// Publish the total export energy
-	site.publish(keyexportEnergy, totalExportEnergy)
-
+	// Publish the total export energy for batteries
 	return nil
 }
 
@@ -665,6 +598,8 @@ func (site *Site) updateGridMeter() error {
 	if site.gridMeter == nil {
 		return nil
 	}
+
+	var totalExportEnergy float64
 
 	if res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo()); err == nil {
 		site.gridPower = res
@@ -706,34 +641,35 @@ func (site *Site) updateGridMeter() error {
 		}
 	}
 
-	// grid energy (import)
-	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
-		if f, err := energyMeter.TotalEnergy(); err == nil {
-			site.publish(keys.GridEnergy, f)
+	// grid export energy
+	if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
+		exportEnergy, err := exportMeter.ExportEnergy()
+		if err == nil {
+			totalExportEnergy += exportEnergy
+			site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
 		} else {
-			site.log.ERROR.Printf("grid energy: %v", err)
+			site.log.ERROR.Printf("grid export energy: %v", err)
 		}
 	}
 
-	// New exportEnergy calculation and publishing
-	exportEnergy, err := site.exportEnergy()
-	if err == nil {
-		site.publish(keyexportEnergy, exportEnergy)
-	} else {
-		site.log.ERROR.Printf("export energy: %v", err)
-	}
-
+	// Publish total export energy
 	return nil
 }
 
 // updateMeter updates and publishes single meter
 func (site *Site) updateMeters() error {
-	// TODO parallelize once modbus supports that
 	site.updatePvMeters()
 	if err := site.updateBatteryMeters(); err != nil {
 		return err
 	}
 	return site.updateGridMeter()
+}
+
+// Negative values mean grid: export, battery: charging.
+func calculateSitePower(log *util.Logger, maxGridSupplyWhileBatteryCharging, gridPower, batteryPower, residualPower float64) float64 {
+	sitePower := gridPower + batteryPower - residualPower
+	log.DEBUG.Printf("calculated site power: %.0fW", sitePower)
+	return sitePower
 }
 
 // sitePower returns
@@ -782,7 +718,7 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 		}
 	}
 
-	sitePower := sitePower(site.log, site.GetMaxGridSupplyWhileBatteryCharging(), site.gridPower, batteryPower, site.GetResidualPower())
+	sitePower := calculateSitePower(site.log, site.GetMaxGridSupplyWhileBatteryCharging(), site.gridPower, batteryPower, site.GetResidualPower())
 
 	// deduct smart loads
 	if len(site.auxMeters) > 0 {
