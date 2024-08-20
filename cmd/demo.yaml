@@ -7,7 +7,3 @@ interval: 3s
 
 site:
   title: Zuhause
-
-mqtt:
-  broker: host.docker.internal:1883
-  topic: evcc
