@@ -109,7 +109,6 @@ func NewConfigurableFromConfig(other map[string]interface{}) (api.Meter, error) 
 func NewConfigurable(currentPowerG func() (float64, error)) (*Meter, error) {
 	m := &Meter{
 		currentPowerG: currentPowerG,
-		logger:        util.NewLogger("meter"), // Logger initialisieren
 	}
 	return m, nil
 }
@@ -118,7 +117,6 @@ func NewConfigurable(currentPowerG func() (float64, error)) (*Meter, error) {
 type Meter struct {
 	currentPowerG func() (float64, error)
 	exportEnergyG func() (float64, error) // Added for exportEnergy
-	logger        *util.Logger            // Logger hinzufügen
 }
 
 // Decorate attaches additional capabilities to the base meter
@@ -139,21 +137,4 @@ func (m *Meter) Decorate(
 // CurrentPower implements the api.Meter interface
 func (m *Meter) CurrentPower() (float64, error) {
 	return m.currentPowerG()
-}
-
-// exportEnergy implements the api.Meter interface
-func (m *Meter) exportEnergy() (float64, error) {
-	if m.exportEnergyG == nil {
-		m.logger.DEBUG.Println("exportEnergyG is nil")
-		return 0, fmt.Errorf("exportEnergyG is nil")
-	}
-
-	m.logger.DEBUG.Println("Calling exportEnergyG...")
-	energy, err := m.exportEnergyG()
-	if err != nil {
-		m.logger.DEBUG.Printf("Error getting export energy: %v", err)
-	} else {
-		m.logger.DEBUG.Printf("Export energy: %f", energy)
-	}
-	return energy, err
 }
