@@ -162,7 +162,7 @@ var _ api.MeterEnergy = (*TqEM420)(nil)
 
 func (m *TqEM420) TotalEnergy() (float64, error) {
 	res, err := m.dataG()
-	return (res.SmartMeter.Values.ActiveEnergyP - res.SmartMeter.Values.ActiveEnergyM) / 1e3, err
+	return (res.SmartMeter.Values.ActiveEnergyP) / 1e3, err
 }
 
 var _ api.PhaseCurrents = (*TqEM420)(nil)
