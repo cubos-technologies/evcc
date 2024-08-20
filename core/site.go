@@ -595,21 +595,69 @@ func (site *Site) updateBatteryMeters() error {
 	return nil
 }
 
-// exportEnergy calculates and returns the total energy exported to the grid.
+// exportEnergy calculates and returns the total energy exported to the grid, PV, and battery.
 func (site *Site) exportEnergy() (float64, error) {
-	// Check if site.gridMeter implements the api.MeterExporter interface
-	if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
-		energy, err := exportMeter.ExportEnergy()
-		if err != nil {
-			site.log.ERROR.Printf("grid export energy: %v", err)
-			return 0, err
-		}
+	totalExportEnergy := 0.0
 
-		site.log.DEBUG.Printf("grid export energy: %.0fWh", energy)
-		return energy, nil
+	// Grid Meter Export Energy
+	if site.gridMeter != nil {
+		if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
+			energy, err := exportMeter.ExportEnergy()
+			if err != nil {
+				site.log.ERROR.Printf("grid export energy: %v", err)
+				return 0, err
+			}
+			site.log.DEBUG.Printf("grid export energy: %.0fWh", energy)
+			totalExportEnergy += energy
+		} else {
+			site.log.WARN.Println("grid meter does not support export energy measurement")
+		}
 	}
 
-	return 0, fmt.Errorf("grid meter does not support export energy measurement")
+	// PV Meters Export Energy
+	for i, meter := range site.pvMeters {
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			energy, err := exportMeter.ExportEnergy()
+			if err != nil {
+				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
+				return totalExportEnergy, err
+			}
+			site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, energy)
+			totalExportEnergy += energy
+		} else {
+			site.log.WARN.Printf("pv meter %d does not support export energy measurement", i+1)
+		}
+	}
+
+	// Battery Meters Export Energy
+	for i, meter := range site.batteryMeters {
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			energy, err := exportMeter.ExportEnergy()
+			if err != nil {
+				site.log.ERROR.Printf("battery %d export energy: %v", i+1, err)
+				return totalExportEnergy, err
+			}
+			site.log.DEBUG.Printf("battery %d export energy: %.0fWh", i+1, energy)
+			totalExportEnergy += energy
+		} else {
+			site.log.WARN.Printf("battery meter %d does not support export energy measurement", i+1)
+		}
+	}
+
+	site.log.DEBUG.Printf("total export energy: %.0fWh", totalExportEnergy)
+	return totalExportEnergy, nil
+}
+
+func (site *Site) updateExportEnergy() error {
+	totalExportEnergy, err := site.exportEnergy()
+	if err != nil {
+		return err
+	}
+
+	// Publish the total export energy
+	site.publish(keyexportEnergy, totalExportEnergy)
+
+	return nil
 }
 
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
