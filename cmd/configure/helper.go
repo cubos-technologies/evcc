@@ -238,11 +238,17 @@ func (c *CmdConfigure) configureMQTT(_ templates.Template) (map[string]interface
 		_, paramPort := templates.ConfigDefaults.ParamByName("port")
 		_, paramUser := templates.ConfigDefaults.ParamByName("user")
 		_, paramPassword := templates.ConfigDefaults.ParamByName("password")
+		_, paramCaCert := templates.ConfigDefaults.ParamByName("ca_cert")
+		_, paramClientCert := templates.ConfigDefaults.ParamByName("client_cert")
+		_, paramClientKey := templates.ConfigDefaults.ParamByName("client_key")
 
 		host := c.askParam(paramHost)
 		port := c.askParam(paramPort)
 		user := c.askParam(paramUser)
 		password := c.askParam(paramPassword)
+		caCert := c.askParam(paramCaCert)
+		clientCert := c.askParam(paramClientCert)
+		clientKey := c.askParam(paramClientKey)
 
 		fmt.Println()
 		fmt.Println("--------------------------------------------")
@@ -250,14 +256,17 @@ func (c *CmdConfigure) configureMQTT(_ templates.Template) (map[string]interface
 		broker := fmt.Sprintf("%s:%s", host, port)
 
 		mqttConfig := map[string]interface{}{
-			"broker":   broker,
-			"user":     user,
-			"password": password,
+			"broker":      broker,
+			"user":        user,
+			"password":    password,
+			"ca_cert":     caCert,
+			"client_cert": clientCert,
+			"client_key":  clientKey,
 		}
 
 		log := util.NewLogger("mqtt")
 
-		if mqtt.Instance, err = mqtt.RegisteredClient(log, broker, user, password, "", 1, false, "", "", ""); err == nil {
+		if mqtt.Instance, err = mqtt.RegisteredClient(log, broker, user, password, "", 1, false, caCert, clientCert, clientKey); err == nil {
 			return mqttConfig, nil
 		}
 

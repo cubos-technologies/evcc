@@ -32,9 +32,9 @@ type Config struct {
 	Password   string `json:"password"`
 	ClientID   string `json:"clientID"`
 	Insecure   bool   `json:"insecure"`
-	CaCert     string `json:"caCert"`
-	ClientCert string `json:"clientCert"`
-	ClientKey  string `json:"clientKey"`
+	CaCert     string `json:"ca_cert"`
+	ClientCert string `json:"client_cert"`
+	ClientKey  string `json:"client_key"`
 }
 
 // Client encapsulates mqtt publish/subscribe functions
@@ -85,14 +85,14 @@ func NewClient(log *util.Logger, broker, user, password, clientID string, qos by
 	if caCertString != "" {
 		caCertPool := x509.NewCertPool()
 		if ok := caCertPool.AppendCertsFromPEM([]byte(caCertString)); !ok {
-			// Failed to add CA Cert
+			return nil, fmt.Errorf("failed to add ca cert to cert pool")
 		}
 		tlsConfig.RootCAs = caCertPool
 	}
 	if clientCertString != "" && clientKeyString != "" {
 		clientCert, err := tls.X509KeyPair([]byte(clientCertString), []byte(clientKeyString))
 		if err != nil {
-			// Failed to add client cert
+			return nil, fmt.Errorf("failed to add client cert: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{clientCert}
 	}

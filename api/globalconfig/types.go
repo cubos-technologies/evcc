@@ -71,9 +71,9 @@ func (m Mqtt) Redacted() any {
 		User       string `json:"user"`
 		ClientID   string `json:"clientID"`
 		Insecure   bool   `json:"insecure"`
-		CaCert     string `json:"caCert"`
-		ClientCert string `json:"clientCert"`
-		ClientKey  string `json:"clientKey"`
+		CaCert     string `json:"ca_cert"`
+		ClientCert string `json:"client_cert"`
+		ClientKey  string `json:"client_key"`
 	}{
 		Broker:     m.Broker,
 		Topic:      m.Topic,
