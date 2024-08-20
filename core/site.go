@@ -436,7 +436,7 @@ func (site *Site) updatePvMeters() {
 		return
 	}
 
-	var totalExportEnergy float64
+	var totalEnergy, totalExportEnergy float64
 
 	site.pvPower = 0
 
@@ -453,6 +453,17 @@ func (site *Site) updatePvMeters() {
 			}
 		} else {
 			site.log.ERROR.Printf("pv %d power: %v", i+1, err)
+		}
+
+		// pv total energy
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				totalEnergy += energy
+				site.log.DEBUG.Printf("pv %d energy: %.0fWh", i+1, energy)
+			} else {
+				site.log.ERROR.Printf("pv %d energy: %v", i+1, err)
+			}
 		}
 
 		// pv export energy
@@ -492,7 +503,7 @@ func (site *Site) updatePvMeters() {
 		mm[i] = meterMeasurement{
 			Id:       strconv.Itoa(i),
 			Power:    power,
-			Energy:   totalExportEnergy,
+			Energy:   totalEnergy,
 			Currents: currents,
 			Voltages: voltages,
 		}
@@ -500,6 +511,7 @@ func (site *Site) updatePvMeters() {
 
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
+	site.publish(keys.PvEnergy, totalEnergy)
 	site.publish(keys.Pv, mm)
 }
 
@@ -509,7 +521,7 @@ func (site *Site) updateBatteryMeters() error {
 		return nil
 	}
 
-	var totalCapacity, totalExportEnergy float64
+	var totalCapacity, totalEnergy, totalExportEnergy float64
 
 	site.batteryPower = 0
 	site.batterySoc = 0
@@ -526,6 +538,17 @@ func (site *Site) updateBatteryMeters() error {
 		site.batteryPower += power
 		if len(site.batteryMeters) > 1 {
 			site.log.DEBUG.Printf("battery %d power: %.0fW", i+1, power)
+		}
+
+		// battery total energy
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				totalEnergy += energy
+				site.log.DEBUG.Printf("battery %d energy: %.0fWh", i+1, energy)
+			} else {
+				site.log.ERROR.Printf("battery %d energy: %v", i+1, err)
+			}
 		}
 
 		// battery export energy
@@ -567,7 +590,7 @@ func (site *Site) updateBatteryMeters() error {
 		mm[i] = batteryMeasurement{
 			Id:           strconv.Itoa(i),
 			Power:        power,
-			Energy:       totalExportEnergy,
+			Energy:       totalEnergy,
 			Soc:          batSoc,
 			Capacity:     capacity,
 			Controllable: controllable,
@@ -587,6 +610,7 @@ func (site *Site) updateBatteryMeters() error {
 
 	site.log.DEBUG.Printf("battery power: %.0fW", site.batteryPower)
 	site.publish(keys.BatteryPower, site.batteryPower)
+	site.publish(keys.BatteryEnergy, totalEnergy)
 	site.publish(keys.Battery, mm)
 
 	// Publish the total export energy for batteries
@@ -599,7 +623,7 @@ func (site *Site) updateGridMeter() error {
 		return nil
 	}
 
-	var totalExportEnergy float64
+	var totalEnergy, totalExportEnergy float64
 
 	if res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo()); err == nil {
 		site.gridPower = res
@@ -638,6 +662,18 @@ func (site *Site) updateGridMeter() error {
 			site.publish(keys.GridVoltages, phases)
 		} else {
 			site.log.ERROR.Printf("grid voltages: %v", err)
+		}
+	}
+
+	// grid total energy
+	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
+		energy, err := energyMeter.TotalEnergy()
+		if err == nil {
+			totalEnergy += energy
+			site.publish(keys.GridEnergy, energy)
+			site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
+		} else {
+			site.log.ERROR.Printf("grid energy: %v", err)
 		}
 	}
 
