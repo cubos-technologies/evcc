@@ -121,12 +121,12 @@ type Loadpoint struct {
 	MinCurrent_       float64       `mapstructure:"minCurrent"`
 	MaxCurrent_       float64       `mapstructure:"maxCurrent"`
 
-	minCurrent       float64 // PV mode: start current	Min+PV mode: min current
-	maxCurrent       float64 // Max allowed current. Physically ensured by the charger
-	configuredPhases int     // Charger configured phase mode 0/1/3
-	limitSoc         int     // Session limit for soc
-	limitEnergy      float64 // Session limit for energy
-	smartCostLimit   float64 // always charge if cost is below this value
+	minCurrent       float64  // PV mode: start current	Min+PV mode: min current
+	maxCurrent       float64  // Max allowed current. Physically ensured by the charger
+	configuredPhases int      // Charger configured phase mode 0/1/3
+	limitSoc         int      // Session limit for soc
+	limitEnergy      float64  // Session limit for energy
+	smartCostLimit   *float64 // always charge if cost is below this value
 
 	mode                api.ChargeMode
 	enabled             bool      // Charger enabled state
@@ -1707,7 +1707,7 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower float64, smartCostActive bool) {
+func (lp *Loadpoint) Update(sitePower float64) {
 
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
