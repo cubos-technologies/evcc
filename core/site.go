@@ -651,7 +651,7 @@ func (site *Site) updateBatteryMeters() error {
 		mm[i] = batteryMeasurement{
 			Id:           strconv.Itoa(i),
 			Power:        power,
-			Energy:       totalEnergy,
+			Energy:       energy,
 			Soc:          batSoc,
 			Capacity:     capacity,
 			Controllable: controllable,
