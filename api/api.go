@@ -19,6 +19,11 @@ type MeterEnergy interface {
 	TotalEnergy() (float64, error)
 }
 
+// exportEnergy provides total import energy in kWh
+type ExportEnergy interface {
+	ExportEnergy() (float64, error)
+}
+
 // PhaseCurrents provides per-phase current A
 type PhaseCurrents interface {
 	Currents() (float64, float64, float64, error)
