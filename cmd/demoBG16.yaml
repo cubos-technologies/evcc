@@ -9,7 +9,7 @@ meters:
   - name: Chargingpark
     type: template
     template: tq-em420
-    usage: log
+    usage: ext
     host: 192.168.200.162
     port: 80
     device: local
@@ -75,8 +75,7 @@ site:
     grid: NSHV
     pv: Solar
     battery: Batterie
-    log: 
-      - Chargingpark
+    ext: Chargingpark
 
 loadpoints:
   - title: LP130
