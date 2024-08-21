@@ -540,19 +540,33 @@ func (site *Site) updateExtMeters() {
 	for i, meter := range site.extMeters {
 		// ext power
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
-		if err != nil {
+		if err == nil {
+			site.log.DEBUG.Printf("ext meter %d power: %.0fW", i+1, power)
+		} else {
 			site.log.ERROR.Printf("ext meter %d power: %v", i+1, err)
-		}
 
+		}
 		// ext energy
 		var energy float64
-		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
-			energy, err = m.TotalEnergy()
-			if err != nil {
-				site.log.ERROR.Printf("ext meter %d energy: %v", i+1, err)
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				site.log.DEBUG.Printf("ext %d energy: %.0fWh", i+1, energy)
+			} else {
+				site.log.ERROR.Printf("ext %d energy: %v", i+1, err)
 			}
 		}
-
+		// ext export energy
+		var totalExportEnergy float64
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
+			if err == nil {
+				totalExportEnergy += exportEnergy
+				site.log.DEBUG.Printf("ext %d export energy: %.0fWh", i+1, exportEnergy)
+			} else {
+				site.log.ERROR.Printf("ext %d export energy: %v", i+1, err)
+			}
+		}
 		mm[i] = meterMeasurement{
 			Power:  power,
 			Energy: energy,
@@ -749,7 +763,9 @@ func (site *Site) updateMeters() error {
 	return site.updateGridMeter()
 }
 
-// Negative values mean grid: export, battery: charging.
+/*	Negative values mean grid: export, battery: charging.
+ *	@param	log		*util.Logger		Logger
+ */
 func calculateSitePower(log *util.Logger, maxGridSupplyWhileBatteryCharging, gridPower, batteryPower, residualPower float64) float64 {
 	sitePower := gridPower + batteryPower - residualPower
 	log.DEBUG.Printf("calculated site power: %.0fW", sitePower)
