@@ -517,7 +517,7 @@ func (site *Site) updatePvMeters() {
 		mm[i] = meterMeasurement{
 			Id:       strconv.Itoa(i),
 			Power:    power,
-			Energy:   totalEnergy,
+			Energy:   energy,
 			Currents: currents,
 			Voltages: voltages,
 		}
