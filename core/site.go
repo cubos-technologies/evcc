@@ -450,7 +450,7 @@ func (site *Site) updatePvMeters() {
 		return
 	}
 
-	var energy float64
+	var totalEnergy, totalExportEnergy float64
 
 	site.pvPower = 0
 
@@ -470,10 +470,11 @@ func (site *Site) updatePvMeters() {
 		}
 
 		// pv total energy
+		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				energy += energy
+				totalEnergy += energy
 				site.log.DEBUG.Printf("pv %d energy: %.0fWh", i+1, energy)
 			} else {
 				site.log.ERROR.Printf("pv %d energy: %v", i+1, err)
@@ -484,6 +485,7 @@ func (site *Site) updatePvMeters() {
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
+				totalExportEnergy += exportEnergy
 				site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, exportEnergy)
 			} else {
 				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
@@ -524,7 +526,7 @@ func (site *Site) updatePvMeters() {
 
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
-	site.publish(keys.PvEnergy, energy)
+	site.publish(keys.PvEnergy, totalEnergy)
 	site.publish(keys.Pv, mm)
 }
 
@@ -579,7 +581,7 @@ func (site *Site) updateBatteryMeters() error {
 		return nil
 	}
 
-	var totalCapacity, energy float64
+	var totalCapacity, totalEnergy float64
 
 	site.batteryPower = 0
 	site.batterySoc = 0
@@ -599,10 +601,11 @@ func (site *Site) updateBatteryMeters() error {
 		}
 
 		// battery total energy
+		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				energy += energy
+				totalEnergy += energy
 				site.log.DEBUG.Printf("battery %d energy: %.0fWh", i+1, energy)
 			} else {
 				site.log.ERROR.Printf("battery %d energy: %v", i+1, err)
@@ -667,7 +670,7 @@ func (site *Site) updateBatteryMeters() error {
 
 	site.log.DEBUG.Printf("battery power: %.0fW", site.batteryPower)
 	site.publish(keys.BatteryPower, site.batteryPower)
-	site.publish(keys.BatteryEnergy, energy)
+	site.publish(keys.BatteryEnergy, totalEnergy)
 	site.publish(keys.Battery, mm)
 
 	// Publish the total export energy for batteries
@@ -724,7 +727,6 @@ func (site *Site) updateGridMeter() error {
 	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
 		energy, err := energyMeter.TotalEnergy()
 		if err == nil {
-			energy += energy
 			site.publish(keys.GridEnergy, energy)
 			site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 		} else {
