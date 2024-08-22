@@ -450,7 +450,7 @@ func (site *Site) updatePvMeters() {
 		return
 	}
 
-	var totalEnergy float64
+	var totalEnergy, totalExportEnergy float64
 
 	site.pvPower = 0
 
@@ -469,17 +469,30 @@ func (site *Site) updatePvMeters() {
 			site.log.ERROR.Printf("pv %d power: %v", i+1, err)
 		}
 
-		// pv energy (production)
+		// pv total energy
 		var energy float64
-		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
-			energy, err = m.TotalEnergy()
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
 				totalEnergy += energy
+				site.log.DEBUG.Printf("pv %d energy: %.0fWh", i+1, energy)
 			} else {
 				site.log.ERROR.Printf("pv %d energy: %v", i+1, err)
 			}
 		}
 
+		// pv export energy
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
+			if err == nil {
+				totalExportEnergy += exportEnergy
+				site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, exportEnergy)
+			} else {
+				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
+			}
+		}
+
+		// currents and voltages handling
 		var currents [3]float64
 		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
 			currents[0], currents[1], currents[2], err = m.Currents()
@@ -528,19 +541,31 @@ func (site *Site) updateExtMeters() {
 	for i, meter := range site.extMeters {
 		// ext power
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
-		if err != nil {
+		if err == nil {
+			site.log.DEBUG.Printf("ext meter %d power: %.0fW", i+1, power)
+		} else {
 			site.log.ERROR.Printf("ext meter %d power: %v", i+1, err)
-		}
 
+		}
 		// ext energy
 		var energy float64
-		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
-			energy, err = m.TotalEnergy()
-			if err != nil {
-				site.log.ERROR.Printf("ext meter %d energy: %v", i+1, err)
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				site.log.DEBUG.Printf("ext %d energy: %.0fWh", i+1, energy)
+			} else {
+				site.log.ERROR.Printf("ext %d energy: %v", i+1, err)
 			}
 		}
-
+		// ext export energy
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
+			if err == nil {
+				site.log.DEBUG.Printf("ext %d export energy: %.0fWh", i+1, exportEnergy)
+			} else {
+				site.log.ERROR.Printf("ext %d export energy: %v", i+1, err)
+			}
+		}
 		mm[i] = meterMeasurement{
 			Power:  power,
 			Energy: energy,
@@ -575,14 +600,25 @@ func (site *Site) updateBatteryMeters() error {
 			site.log.DEBUG.Printf("battery %d power: %.0fW", i+1, power)
 		}
 
-		// battery energy (discharge)
+		// battery total energy
 		var energy float64
-		if m, ok := meter.(api.MeterEnergy); ok {
-			energy, err = m.TotalEnergy()
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
 				totalEnergy += energy
+				site.log.DEBUG.Printf("battery %d energy: %.0fWh", i+1, energy)
 			} else {
 				site.log.ERROR.Printf("battery %d energy: %v", i+1, err)
+			}
+		}
+
+		// battery export energy
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
+			if err == nil {
+				site.log.DEBUG.Printf("battery %d export energy: %.0fWh", i+1, exportEnergy)
+			} else {
+				site.log.ERROR.Printf("battery %d export energy: %v", i+1, err)
 			}
 		}
 
@@ -637,6 +673,7 @@ func (site *Site) updateBatteryMeters() error {
 	site.publish(keys.BatteryEnergy, totalEnergy)
 	site.publish(keys.Battery, mm)
 
+	// Publish the total export energy for batteries
 	return nil
 }
 
@@ -686,15 +723,28 @@ func (site *Site) updateGridMeter() error {
 		}
 	}
 
-	// grid energy (import)
+	// grid total energy
 	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
-		if f, err := energyMeter.TotalEnergy(); err == nil {
-			site.publish(keys.GridEnergy, f)
+		energy, err := energyMeter.TotalEnergy()
+		if err == nil {
+			site.publish(keys.GridEnergy, energy)
+			site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 		} else {
 			site.log.ERROR.Printf("grid energy: %v", err)
 		}
 	}
 
+	// grid export energy
+	if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
+		exportEnergy, err := exportMeter.ExportEnergy()
+		if err == nil {
+			site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
+		} else {
+			site.log.ERROR.Printf("grid export energy: %v", err)
+		}
+	}
+
+	// Publish total export energy
 	return nil
 }
 
@@ -756,7 +806,6 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 	}
 
 	sitePower := sitePower(site.log, site.GetMaxGridSupplyWhileBatteryCharging(), site.gridPower, batteryPower, site.GetResidualPower())
-
 	// deduct smart loads
 	if len(site.auxMeters) > 0 {
 		var auxPower float64
