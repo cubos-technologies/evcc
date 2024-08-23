@@ -338,19 +338,6 @@ func publishEnergyMeter(m *MQTT, energyMeterData EnergyMeterData) {
 
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
-	// number of loadpoints
-	topic := fmt.Sprintf("%s/loadpoints", m.root)
-	m.publish(topic, true, len(site.Loadpoints()))
-
-	// number of vehicles
-	topic = fmt.Sprintf("%s/vehicles", m.root)
-	m.publish(topic, true, len(site.Vehicles().Settings()))
-
-	for i := 0; i < 10; i++ {
-		m.publish(fmt.Sprintf("%s/site/pv/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/battery/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/vehicles/%d", m.root, i), true, nil)
-	}
 
 	// alive indicator
 	var updated time.Time
@@ -397,12 +384,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				var errorJson, _ = json.Marshal(error)
 				// TODO: retain error?
 				m.publishString(fmt.Sprintf("%s/chargepoint/%s/error", m.root, chargepointData.Title), true, string(errorJson[:]))
-				// Skip to publishing the original MQTT topics, can be removed later
-				goto skipto
-			default:
-				topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
-				// Skip to publishing the original MQTT topics, can be removed later
-				goto skipto
 			}
 			chargepointData.Timestamp = time.Now().Unix()
 
@@ -419,9 +400,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				}
 			}
 			chargepoints.Store(strconv.Itoa(id), chargepointData)
-			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
-		case p.Key == "vehicles":
-			topic = fmt.Sprintf("%s/vehicles", m.root)
 		case p.Key == "gridPower":
 			gridMeterData.Title = "grid"
 			power, ok := p.Val.(float64)
@@ -430,8 +408,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		case p.Key == "gridEnergy":
 			gridMeterData.Title = "grid"
 			energy, ok := p.Val.(float64)
@@ -440,8 +416,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		case p.Key == "gridCurrents":
 			gridMeterData.Title = "grid"
 			currents, ok := p.Val.([]float64)
@@ -452,8 +426,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		case p.Key == "gridVoltages":
 			gridMeterData.Title = "grid"
 			voltages, ok := p.Val.([]float64)
@@ -464,10 +436,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				gridMeterData.Timestamp = time.Now().Unix()
 				publishEnergyMeter(m, gridMeterData)
 			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		default:
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
 				if meters, ok := p.Val.([]core.MeterMeasurement); ok {
 					for _, meter := range meters {
@@ -513,15 +482,10 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 				}
 			}
 		}
-	skipto:
-
 		// alive indicator
 		if time.Since(updated) > time.Second {
 			updated = time.Now()
 			m.publish(fmt.Sprintf("%s/updated", m.root), true, updated.Unix())
 		}
-
-		// value
-		m.publish(topic, true, p.Val)
 	}
 }
