@@ -5,6 +5,13 @@ log: debug
 
 interval: 1s
 
+circuits:
+  - name: main # eindeutiger Name, wird als Referenz für andere Circuits verwendet
+    title: Hauptstromkreis # Anzeige in der UI (später)
+    maxCurrent: 105 # 63A (optional)
+    maxPower: 24000 # 30kW (optional)
+    #meter: grid # optional
+
 meters:
   - name: Chargingpark
     type: template
@@ -45,28 +52,34 @@ meters:
     port: 502 # Port 
 
 chargers:
-  - name: LP130
+  - name: C22EDUT001
     type: template
     template: bender
-    host: 192.168.200.130 # IP-Adresse oder Hostname
+    host: 192.168.200.205 # IP-Adresse oder Hostname
     port: 502 # Port (optional) 
 
-  - name: LP131
+  - name: C22EDUT002
     type: template
     template: bender
-    host: 192.168.200.131 # IP-Adresse oder Hostname
+    host: 192.168.200.206 # IP-Adresse oder Hostname
     port: 502 # Port (optional) 
 
-  - name: LP132
+  - name: C22EDUT003
     type: template
     template: bender
-    host: 192.168.200.132 # IP-Adresse oder Hostname
+    host: 192.168.200.207 # IP-Adresse oder Hostname
     port: 502 # Port (optional) 
 
-  - name: LP133
+  - name: C44EDUT003
     type: template
     template: bender
-    host: 192.168.200.133 # IP-Adresse oder Hostname
+    host: 192.168.200.209 # IP-Adresse oder Hostname
+    port: 502 # Port (optional) 
+
+  - name: MennekesHIL
+    type: template
+    template: bender
+    host: 192.168.200.210 # IP-Adresse oder Hostname
     port: 502 # Port (optional) 
 
 site:
@@ -77,18 +90,26 @@ site:
     battery: Batterie
 
 loadpoints:
-  - title: LP130
-    charger: LP130
+  - title: C22E-DUT001
+    charger: C22EDUT001
     mode: "pv"
-  - title: LP131
-    charger: LP131
+    circuit: main
+  - title: C22E-DUT002
+    charger: C22EDUT002
     mode: "pv"
-  - title: LP132
-    charger: LP132
+    circuit: main
+  - title: C22E-DUT003
+    charger: C22EDUT003
     mode: "pv"
-  - title: LP133
-    charger: LP133
+    circuit: main
+  - title: C44E-DUT003
+    charger: C44EDUT003
     mode: "pv"
+    circuit: main
+  - title: Mennekes-HIL
+    charger: MennekesHIL
+    mode: "pv"
+    circuit: main
 
 tariffs:
   currency: EUR # three letter ISO-4217 currency code (default EUR)
