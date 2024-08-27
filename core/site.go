@@ -706,6 +706,8 @@ func (site *Site) updateMeters() error {
 	g.Go(func() error { site.updateAuxMeters(); return nil })
 	g.Go(func() error { site.updateExtMeters(); return nil })
 
+	g.Go(func() error { site.circuit.Update(site.loadpointsAsCircuitDevices()); return nil })
+
 	g.Go(site.updateBatteryMeters)
 	g.Go(site.updateGridMeter)
 
@@ -1319,9 +1321,11 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 	freePowerInCircuit := make(map[api.Circuit]float64)
 	for _, c := range site.loadpointData.circuitList {
 		if c != nil {
-			maxPowerCircuittmp := c.GetMaxPower()
-			if maxPowerCircuittmp > site.loadpointData.circuitMinPower[c] {
-				freePowerInCircuit[c] = c.GetMaxPower() - site.loadpointData.circuitMinPower[c]
+			actualPowerOfAllLoadpointsInCircuit := site.getActualPowerOfAllLPInCircuit(c)
+			notLpConsumtion := c.GetChargePower() - actualPowerOfAllLoadpointsInCircuit
+			freePower := c.GetMaxPower() - notLpConsumtion
+			if freePower > site.loadpointData.circuitMinPower[c] {
+				freePowerInCircuit[c] = freePower - site.loadpointData.circuitMinPower[c]
 			} else {
 				freePowerInCircuit[c] = 0
 				minPowerModeNow := 0.0
@@ -1337,23 +1341,23 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 						}
 					}
 				}
-				if maxPowerCircuittmp > minPowerModeNow {
-					if maxPowerCircuittmp > (minPowerModeNow + minPowerMinPV) {
-						setPowerModeNow := (maxPowerCircuittmp - (minPowerModeNow + minPowerMinPV)) / float64(countModeNow)
+				if freePower > minPowerModeNow {
+					if freePower > (minPowerModeNow + minPowerMinPV) {
+						setPowerModeNow := (freePower - (minPowerModeNow + minPowerMinPV)) / float64(countModeNow)
 						for _, lp := range site.loadpoints {
 							if lp.GetCircuit() == c {
 								minPowerLoadpoint := lp.GetMinPower() * float64(lp.ActivePhases())
 								if lp.GetMode() == api.ModeNow {
 									minPowerLoadpoint += setPowerModeNow
-									if minPowerLoadpoint < maxPowerCircuittmp {
+									if minPowerLoadpoint < freePower {
 										powerForLoadpointTmp[lp] = minPowerLoadpoint
-										maxPowerCircuittmp -= minPowerLoadpoint
+										freePower -= minPowerLoadpoint
 									} else {
 										powerForLoadpointTmp[lp] = minPowerLoadpoint
 									}
 								} else if lp.GetMode() == api.ModeMinPV {
 									powerForLoadpointTmp[lp] = minPowerLoadpoint
-									maxPowerCircuittmp -= minPowerLoadpoint
+									freePower -= minPowerLoadpoint
 								}
 							}
 						}
@@ -1363,7 +1367,7 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 								if lp.GetMode() == api.ModeNow {
 									minPowerLoadpoint := lp.GetMinPower() * float64(lp.ActivePhases())
 									powerForLoadpointTmp[lp] = minPowerLoadpoint
-									maxPowerCircuittmp -= minPowerLoadpoint
+									freePower -= minPowerLoadpoint
 								}
 							}
 						}
@@ -1371,9 +1375,9 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 							if lp.GetCircuit() == c {
 								if lp.GetMode() == api.ModeMinPV {
 									minPowerLoadpoint := lp.GetMinPower() * float64(lp.ActivePhases())
-									if minPowerLoadpoint < maxPowerCircuittmp {
+									if minPowerLoadpoint < freePower {
 										powerForLoadpointTmp[lp] = minPowerLoadpoint
-										maxPowerCircuittmp -= minPowerLoadpoint
+										freePower -= minPowerLoadpoint
 									} else {
 										powerForLoadpointTmp[lp] = 0
 									}
@@ -1386,9 +1390,9 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 						if lp.GetCircuit() == c {
 							if lp.GetMode() == api.ModeNow {
 								minPowerLoadpoint := lp.GetMinPower() * float64(lp.ActivePhases())
-								if minPowerLoadpoint < maxPowerCircuittmp {
+								if minPowerLoadpoint < freePower {
 									powerForLoadpointTmp[lp] = minPowerLoadpoint
-									maxPowerCircuittmp -= minPowerLoadpoint
+									freePower -= minPowerLoadpoint
 								} else {
 									powerForLoadpointTmp[lp] = 0
 								}
@@ -1402,6 +1406,22 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 		}
 	}
 	return powerForLoadpointTmp, freePowerInCircuit
+}
+
+func (site *Site) getActualPowerOfAllLPInCircuit(circuit api.Circuit) float64 {
+	power := 0.0
+	current := 0.0
+
+	for _, lp := range site.loadpoints {
+		if lp.GetCircuit() != circuit {
+			continue
+		}
+
+		power += lp.GetChargePower()
+		current += lp.GetMaxPhaseCurrent()
+	}
+
+	return power
 }
 
 /*	Function to update a Loadpoint with the calculated Power
@@ -1464,7 +1484,7 @@ func (site *Site) UpdateSingleLoadpoint(lp *Loadpoint) {
  *	statecheck      bool                    Check answer
  */
 func (site *Site) checkVehicleState(state api.ChargeStatus) bool {
-	if state == api.StatusB || state == api.StatusC || state == api.StatusA {
+	if state == api.StatusB || state == api.StatusC {
 		return true
 	}
 	return false
