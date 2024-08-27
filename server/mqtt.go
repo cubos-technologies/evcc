@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/evcc-io/evcc/api"
+	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/core/vehicle"
@@ -287,8 +288,8 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == "vehicles":
 			topic = fmt.Sprintf("%s/vehicles", m.root)
-		case p.Key == "meters":
-			topic = fmt.Sprintf("%s/meters", m.root)
+		case p.Key == keys.Meters:
+			topic = fmt.Sprintf("%s/%s", m.root, keys.Meters)
 		default:
 			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
 		}
