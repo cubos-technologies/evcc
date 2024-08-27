@@ -384,6 +384,8 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == keys.Meters:
 			topic = fmt.Sprintf("%s/%s", m.root, keys.Meters)
+		default:
+			continue
 		}
 
 		// alive indicator
