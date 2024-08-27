@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -26,11 +27,14 @@ func ClientID() string {
 
 // Config is the public configuration
 type Config struct {
-	Broker   string `json:"broker"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	ClientID string `json:"clientID"`
-	Insecure bool   `json:"insecure"`
+	Broker     string `json:"broker"`
+	User       string `json:"user"`
+	Password   string `json:"password"`
+	ClientID   string `json:"clientID"`
+	Insecure   bool   `json:"insecure"`
+	CaCert     string `json:"caCert"`
+	ClientCert string `json:"clientCert"`
+	ClientKey  string `json:"clientKey"`
 }
 
 // Client encapsulates mqtt publish/subscribe functions
@@ -41,7 +45,7 @@ type Client struct {
 	broker   string
 	Qos      byte
 	inflight uint32
-	listener map[string][]func(string)
+	listener map[string][]func(string, string)
 }
 
 type Option func(*paho.ClientOptions)
@@ -49,7 +53,7 @@ type Option func(*paho.ClientOptions)
 const secure = "tls://"
 
 // NewClient creates new Mqtt publisher
-func NewClient(log *util.Logger, broker, user, password, clientID string, qos byte, insecure bool, opts ...Option) (*Client, error) {
+func NewClient(log *util.Logger, broker, user, password, clientID string, qos byte, insecure bool, caCertString string, clientCertString string, clientKeyString string, opts ...Option) (*Client, error) {
 	broker, isSecure := strings.CutPrefix(broker, secure)
 
 	// strip schema as it breaks net.SplitHostPort
@@ -61,7 +65,7 @@ func NewClient(log *util.Logger, broker, user, password, clientID string, qos by
 	mc := &Client{
 		log:      log,
 		Qos:      qos,
-		listener: make(map[string][]func(string)),
+		listener: make(map[string][]func(string, string)),
 	}
 
 	options := paho.NewClientOptions()
@@ -75,9 +79,24 @@ func NewClient(log *util.Logger, broker, user, password, clientID string, qos by
 	options.SetConnectionLostHandler(mc.ConnectionLostHandler)
 	options.SetConnectTimeout(request.Timeout)
 
-	if insecure {
-		options.SetTLSConfig(&tls.Config{InsecureSkipVerify: true})
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: insecure,
 	}
+	if caCertString != "" {
+		caCertPool := x509.NewCertPool()
+		if ok := caCertPool.AppendCertsFromPEM([]byte(caCertString)); !ok {
+			return nil, fmt.Errorf("failed to add ca cert to cert pool")
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+	if clientCertString != "" && clientKeyString != "" {
+		clientCert, err := tls.X509KeyPair([]byte(clientCertString), []byte(clientKeyString))
+		if err != nil {
+			return nil, fmt.Errorf("failed to add client cert: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
+	}
+	options.SetTLSConfig(tlsConfig)
 
 	// additional options
 	for _, o := range opts {
@@ -152,7 +171,7 @@ func (m *Client) Publish(topic string, retained bool, payload interface{}) error
 }
 
 // Listen attaches listener to slice of listeners for given topic
-func (m *Client) Listen(topic string, callback func(string)) error {
+func (m *Client) Listen(topic string, callback func(string, string)) error {
 	m.mux.Lock()
 	m.listener[topic] = append(m.listener[topic], callback)
 	m.mux.Unlock()
@@ -170,13 +189,29 @@ func (m *Client) Listen(topic string, callback func(string)) error {
 // ListenSetter creates a /set listener that resets the payload after handling
 func (m *Client) ListenSetter(topic string, callback func(string) error) error {
 	topic += "/set"
-	err := m.Listen(topic, func(payload string) {
+	err := m.Listen(topic, func(payload string, full_topic string) {
 		if err := callback(payload); err != nil {
-			m.log.ERROR.Printf("set %s: %v", topic, err)
+			m.log.ERROR.Printf("set %s: %v", full_topic, err)
+			return
 		}
 		if err := m.Publish(topic, true, ""); err != nil {
-			m.log.ERROR.Printf("clear: %s: %v", topic, err)
+			m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
 		}
+	})
+	return err
+}
+
+// ListenSetter but returns the full topic as well
+func (m *Client) ListenSetterWithTopic(topic string, callback func(string, string) error) error {
+	topic += "/set"
+	err := m.Listen(topic, func(payload string, full_topic string) {
+		if err := callback(payload, full_topic); err != nil {
+			m.log.ERROR.Printf("set %s: %v", full_topic, err)
+			return
+		}
+		// if err := m.Publish(full_topic, true, ""); err != nil { //take out ?
+		// 	m.log.ERROR.Printf("clear: %s: %v", full_topic, err)
+		// }
 	})
 	return err
 }
@@ -186,15 +221,16 @@ func (m *Client) listen(topic string) paho.Token {
 	token := m.Client.Subscribe(topic, m.Qos, func(c paho.Client, msg paho.Message) {
 		payload := string(msg.Payload())
 		m.log.TRACE.Printf("recv %s: '%v'", topic, payload)
-		if len(payload) > 0 {
-			m.mux.Lock()
-			callbacks := m.listener[topic]
-			m.mux.Unlock()
+		m.log.TRACE.Printf("full topic: '%s'", string(msg.Topic()))
+		//if len(payload) > 0 {
+		m.mux.Lock()
+		callbacks := m.listener[topic]
+		m.mux.Unlock()
 
-			for _, cb := range callbacks {
-				cb(payload)
-			}
+		for _, cb := range callbacks {
+			cb(payload, msg.Topic())
 		}
+		//}
 	})
 	return token
 }

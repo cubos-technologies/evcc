@@ -99,5 +99,7 @@ EXPOSE 9522/udp
 
 HEALTHCHECK --interval=60s --start-period=60s --timeout=30s --retries=3 CMD [ "evcc", "health" ]
 
+COPY evcc.db /root/.evcc/
+
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 CMD [ "evcc" ]

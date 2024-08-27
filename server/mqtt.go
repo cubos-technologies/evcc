@@ -26,7 +26,7 @@ type MQTT struct {
 }
 
 // NewMQTT creates MQTT server
-func NewMQTT(root string, site site.API) (*MQTT, error) {
+func NewMQTT(root string, site site.API, shutdown func()) (*MQTT, error) {
 	m := &MQTT{
 		log:     util.NewLogger("mqtt"),
 		Handler: mqtt.Instance,
@@ -36,7 +36,7 @@ func NewMQTT(root string, site site.API) (*MQTT, error) {
 
 	err := m.Handler.Cleanup(m.root, true)
 	if err == nil {
-		err = m.Listen(site)
+		err = m.Listen(site, shutdown)
 	}
 	if err != nil {
 		err = fmt.Errorf("mqtt: %w", err)
@@ -152,8 +152,23 @@ func (m *MQTT) publish(topic string, retained bool, payload interface{}) {
 	m.publishComplex(topic, retained, payload)
 }
 
-func (m *MQTT) Listen(site site.API) error {
+func (m *MQTT) Listen(site site.API, shutdown func()) error {
 	if err := m.listenSiteSetters(m.root+"/site", site); err != nil {
+		return err
+	}
+
+	for _, s := range []setterWithTopic{
+		{m.root + "/shutdown", func(payload string, full_topic string) error {
+			shutdown()
+			return nil
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(s.topic, s.fun); err != nil {
+			return err
+		}
+	}
+
+	if err := m.listenConfig(m.root, site); err != nil {
 		return err
 	}
 
@@ -173,6 +188,82 @@ func (m *MQTT) Listen(site site.API) error {
 		}
 	}
 
+	return nil
+}
+
+func (m *MQTT) listenConfig(topic string, site site.API) error {
+	for _, s := range []setterWithTopic{
+		{"/energymeter/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/user/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/users", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req2 map[string]map[string]any //want to change to map[string]map[string]any
+			var err error
+			json.NewDecoder(msg).Decode(&req2)
+			for cubos_id, req := range req2 {
+				if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
+					errorTopic := full_topic[:len(full_topic)-3] + "error"
+					m.publish(errorTopic, false, err.Error())
+					//return err
+				}
+			}
+			return err
+		}},
+		{"/user/default", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			req["cubos_id"] = "default"
+			req["template"] = "offline"
+			req["title"] = "Standardfahrzeug"
+			req["identifiers"] = "[default]"
+			if err := MQTTConfigHandler(req, site, full_topic+"/set"); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/config", func(payload string, full_topic string) error {
+			//TODO
+			return nil
+		}},
+		{"/chargepoint/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -203,6 +294,7 @@ func (m *MQTT) listenLoadpointSetters(topic string, site site.API, lp loadpoint.
 		{"/mode", setterFunc(api.ChargeModeString, pass(lp.SetMode))},
 		{"/phases", intSetter(lp.SetPhases)},
 		{"/limitSoc", intSetter(pass(lp.SetLimitSoc))},
+		{"/priority", intSetter(pass(lp.SetPriority))},
 		{"/minCurrent", floatSetter(lp.SetMinCurrent)},
 		{"/maxCurrent", floatSetter(lp.SetMaxCurrent)},
 		{"/limitEnergy", floatSetter(pass(lp.SetLimitEnergy))},

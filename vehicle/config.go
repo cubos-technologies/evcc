@@ -33,7 +33,6 @@ func NewFromConfig(typ string, other map[string]interface{}) (api.Vehicle, error
 	if err := util.DecodeOther(other, &cc); err != nil {
 		return nil, err
 	}
-
 	if cc.Cloud {
 		cc.Other["brand"] = typ
 		typ = "cloud"
