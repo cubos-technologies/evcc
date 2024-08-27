@@ -106,6 +106,10 @@ func (m *MQTT) publishComplex(topic string, retained bool, payload interface{}) 
 				m.publishComplex(fmt.Sprintf("%s/%s", topic, strings.ToLower(n[:1])+n[1:]), retained, val.Field(i).Interface())
 			}
 		}
+		b, err := json.Marshal(payload)
+		if err == nil {
+			m.publishString(topic, retained, string(b))
+		}
 
 	case reflect.Pointer:
 		if !reflect.ValueOf(payload).IsNil() {
