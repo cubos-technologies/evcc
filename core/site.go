@@ -665,6 +665,29 @@ func (site *Site) updateBatteryMeters() error {
 			}
 		}
 
+		// currents and voltages handling
+		var currents [3]float64
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				site.log.DEBUG.Printf("battery %s currents: %v", ref, currents)
+			} else {
+				site.log.ERROR.Printf("battery %s currents: %v", ref, err)
+			}
+		}
+
+		var voltages [3]float64
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				site.log.DEBUG.Printf("battery %s voltages: %v", ref, voltages)
+			} else {
+				site.log.ERROR.Printf("battery %s voltages: %v", ref, err)
+			}
+		} else {
+			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
+		}
+
 		_, controllable := meter.(api.BatteryController)
 
 		mmm[ref] = batteryMeasurement{
@@ -673,6 +696,12 @@ func (site *Site) updateBatteryMeters() error {
 			Soc:          batSoc,
 			Capacity:     capacity,
 			Controllable: controllable,
+			IL1:          currents[0] * 1000,
+			IL2:          currents[1] * 1000,
+			IL3:          currents[2] * 1000,
+			UL1:          voltages[0] * 1000,
+			UL2:          voltages[1] * 1000,
+			UL3:          voltages[2] * 1000,
 		}
 	}
 
