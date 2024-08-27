@@ -42,21 +42,35 @@ type updater interface {
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Power          float64    `json:"power"`
-	Energy         float64    `json:"energy,omitempty"`
-	EnergyNegative float64    `json:"ENeg,omitempty"`
-	Currents       [3]float64 `json:"currents,omitempty"`
-	Voltages       [3]float64 `json:"voltages,omitempty"`
+	Power          float64 `json:"P"`
+	Energy         float64 `json:"EPos"`
+	EnergyNegative float64 `json:"ENeg"`
+	IL1            float64 `json:"IL1"`
+	IL2            float64 `json:"IL2"`
+	IL3            float64 `json:"IL3"`
+	UL1            float64 `json:"UL1"`
+	UL2            float64 `json:"UL2"`
+	UL3            float64 `json:"UL3"`
 }
+
+type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power        float64 `json:"power"`
-	Energy       float64 `json:"energy,omitempty"`
-	Soc          float64 `json:"soc,omitempty"`
-	Capacity     float64 `json:"capacity,omitempty"`
+	Power        float64 `json:"P"`
+	Energy       float64 `json:"E"`
+	Soc          float64 `json:"soc"`
+	Capacity     float64 `json:"capacity"`
 	Controllable bool    `json:"controllable"`
+	IL1          float64 `json:"IL1"`
+	IL2          float64 `json:"IL2"`
+	IL3          float64 `json:"IL3"`
+	UL1          float64 `json:"UL1"`
+	UL2          float64 `json:"UL2"`
+	UL3          float64 `json:"UL3"`
 }
+
+type BatteryMeasurement = batteryMeasurement
 
 var _ site.API = (*Site)(nil)
 
@@ -518,10 +532,14 @@ func (site *Site) updatePvMeters() {
 		}
 
 		mmm[ref] = meterMeasurement{
-			Power:    power,
-			Energy:   energy,
-			Currents: currents,
-			Voltages: voltages,
+			Power:  power,
+			Energy: energy,
+			IL1:    currents[0] * 1000,
+			IL2:    currents[1] * 1000,
+			IL3:    currents[2] * 1000,
+			UL1:    voltages[0] * 1000,
+			UL2:    voltages[1] * 1000,
+			UL3:    voltages[2] * 1000,
 		}
 	}
 
@@ -846,12 +864,15 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 			}
 
 			if m, ok := meter.(api.PhaseCurrents); ok {
-				mm.Currents[0], mm.Currents[1], mm.Currents[2], _ = m.Currents()
-
+				mm.IL1, mm.IL2, mm.IL3, _ = func(il1, il2, il3 float64, err error) (float64, float64, float64, error) {
+					return il1 * 1000, il2 * 1000, il3 * 1000, err
+				}(m.Currents())
 			}
 
 			if m, ok := meter.(api.PhaseVoltages); ok {
-				mm.Voltages[0], mm.Voltages[1], mm.Voltages[2], _ = m.Voltages()
+				mm.UL1, mm.UL2, mm.UL3, _ = func(ul1, ul2, ul3 float64, err error) (float64, float64, float64, error) {
+					return ul1 * 1000, ul2 * 1000, ul3 * 1000, err
+				}(m.Voltages())
 			}
 
 			mmm[ref] = mm
