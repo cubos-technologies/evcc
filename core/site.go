@@ -204,7 +204,11 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		if err != nil {
 			return err
 		}
-		site.gridMeter[site.Meters.GridMeterRef] = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.gridMeter[cubosId] = dev.Instance()
+		} else {
+			site.gridMeter[site.Meters.GridMeterRef] = dev.Instance()
+		}
 	}
 
 	// multiple pv
@@ -214,7 +218,11 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		if err != nil {
 			return err
 		}
-		site.pvMeters[ref] = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.pvMeters[cubosId] = dev.Instance()
+		} else {
+			site.pvMeters[ref] = dev.Instance()
+		}
 	}
 
 	// multiple batteries
@@ -224,7 +232,11 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		if err != nil {
 			return err
 		}
-		site.batteryMeters[ref] = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.batteryMeters[cubosId] = dev.Instance()
+		} else {
+			site.batteryMeters[ref] = dev.Instance()
+		}
 	}
 
 	if len(site.batteryMeters) > 0 && site.GetResidualPower() <= 0 {
@@ -238,7 +250,11 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		if err != nil {
 			return err
 		}
-		site.extMeters[ref] = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.extMeters[cubosId] = dev.Instance()
+		} else {
+			site.extMeters[ref] = dev.Instance()
+		}
 	}
 
 	// auxiliary meters
@@ -248,7 +264,11 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		if err != nil {
 			return err
 		}
-		site.auxMeters[ref] = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.auxMeters[cubosId] = dev.Instance()
+		} else {
+			site.auxMeters[ref] = dev.Instance()
+		}
 	}
 
 	// revert battery mode on shutdown
