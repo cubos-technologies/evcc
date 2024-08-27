@@ -456,7 +456,7 @@ func (site *Site) updatePvMeters() {
 
 	site.pvPower = 0
 
-	mm := make(map[string]meterMeasurement, len(site.pvMeters))
+	mmm := make(map[string]meterMeasurement, len(site.pvMeters))
 
 	for ref, meter := range site.pvMeters {
 		// pv power
@@ -517,7 +517,7 @@ func (site *Site) updatePvMeters() {
 			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
 		}
 
-		mm[ref] = meterMeasurement{
+		mmm[ref] = meterMeasurement{
 			Power:    power,
 			Energy:   energy,
 			Currents: currents,
@@ -528,9 +528,9 @@ func (site *Site) updatePvMeters() {
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
 	site.publish(keys.PvEnergy, totalEnergy)
-	site.publish(keys.Pv, mm)
+	site.publish(keys.Pv, mmm)
 
-	site.publish(keys.Meters, mm)
+	site.publish(keys.Meters, mmm)
 }
 
 // updateExtMeters updates ext meters. All measurements are optional.
@@ -539,7 +539,7 @@ func (site *Site) updateExtMeters() {
 		return
 	}
 
-	mm := make(map[string]meterMeasurement, len(site.extMeters))
+	mmm := make(map[string]meterMeasurement, len(site.extMeters))
 
 	for ref, meter := range site.extMeters {
 		// ext power
@@ -569,12 +569,12 @@ func (site *Site) updateExtMeters() {
 				site.log.ERROR.Printf("ext %s export energy: %v", ref, err)
 			}
 		}
-		mm[ref] = meterMeasurement{
+		mmm[ref] = meterMeasurement{
 			Power:  power,
 			Energy: energy,
 		}
 	}
-	site.publish(keys.Meters, mm)
+	site.publish(keys.Meters, mmm)
 }
 
 // updateBatteryMeters updates battery meters. Power is retried, other measurements are optional.
@@ -588,7 +588,7 @@ func (site *Site) updateBatteryMeters() error {
 	site.batteryPower = 0
 	site.batterySoc = 0
 
-	mm := make(map[string]batteryMeasurement, len(site.batteryMeters))
+	mmm := make(map[string]batteryMeasurement, len(site.batteryMeters))
 
 	for ref, meter := range site.batteryMeters {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
@@ -649,7 +649,7 @@ func (site *Site) updateBatteryMeters() error {
 
 		_, controllable := meter.(api.BatteryController)
 
-		mm[ref] = batteryMeasurement{
+		mmm[ref] = batteryMeasurement{
 			Power:        power,
 			Energy:       energy,
 			Soc:          batSoc,
@@ -672,9 +672,9 @@ func (site *Site) updateBatteryMeters() error {
 	site.log.DEBUG.Printf("battery power: %.0fW", site.batteryPower)
 	site.publish(keys.BatteryPower, site.batteryPower)
 	site.publish(keys.BatteryEnergy, totalEnergy)
-	site.publish(keys.Battery, mm)
+	site.publish(keys.Battery, mmm)
 
-	site.publish(keys.Meters, mm)
+	site.publish(keys.Meters, mmm)
 
 	// Publish the total export energy for batteries
 	return nil
@@ -727,12 +727,12 @@ func (site *Site) updateGridMeter() error {
 			}
 		}
 
-		var tempmm meterMeasurement
+		var mm meterMeasurement
 		// grid energy (import)
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				tempmm.Energy = energy
+				mm.Energy = energy
 				site.publish(keys.GridEnergy, energy)
 				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 			} else {
@@ -744,18 +744,18 @@ func (site *Site) updateGridMeter() error {
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				tempmm.EnergyNegative = exportEnergy
+				mm.EnergyNegative = exportEnergy
 				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
 			} else {
 				site.log.ERROR.Printf("grid export energy: %v", err)
 			}
 		}
 
-		tempmm.Power = site.gridPower
+		mm.Power = site.gridPower
 
-		mm := make(map[string]meterMeasurement)
-		mm[ref] = tempmm
-		site.publish(keys.Meters, mm)
+		mmm := make(map[string]meterMeasurement)
+		mmm[ref] = mm
+		site.publish(keys.Meters, mmm)
 	}
 
 	// Publish total export energy
@@ -833,28 +833,28 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 	// deduct smart loads
 	if len(site.auxMeters) > 0 {
 		var auxPower float64
-		mm := make(map[string]meterMeasurement, len(site.auxMeters))
+		mmm := make(map[string]meterMeasurement, len(site.auxMeters))
 
 		for ref, meter := range site.auxMeters {
-			var tempmm meterMeasurement
+			var mm meterMeasurement
 			if power, err := meter.CurrentPower(); err == nil {
 				auxPower += power
-				tempmm.Power = power
+				mm.Power = power
 				site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
 			} else {
 				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
 			}
 
 			if m, ok := meter.(api.PhaseCurrents); ok {
-				tempmm.Currents[0], tempmm.Currents[1], tempmm.Currents[2], _ = m.Currents()
+				mm.Currents[0], mm.Currents[1], mm.Currents[2], _ = m.Currents()
 
 			}
 
 			if m, ok := meter.(api.PhaseVoltages); ok {
-				tempmm.Voltages[0], tempmm.Voltages[1], tempmm.Voltages[2], _ = m.Voltages()
+				mm.Voltages[0], mm.Voltages[1], mm.Voltages[2], _ = m.Voltages()
 			}
 
-			mm[ref] = tempmm
+			mmm[ref] = mm
 		}
 
 		sitePower -= auxPower
@@ -862,7 +862,7 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 		site.log.DEBUG.Printf("aux power: %.0fW", auxPower)
 		site.publish(keys.AuxPower, auxPower)
 
-		site.publish(keys.Aux, mm)
+		site.publish(keys.Aux, mmm)
 	}
 
 	// handle priority
