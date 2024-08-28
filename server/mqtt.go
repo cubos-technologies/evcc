@@ -96,16 +96,7 @@ func (m *MQTT) publishComplex(topic string, retained bool, payload interface{}) 
 		}
 
 	case reflect.Struct:
-		val := reflect.ValueOf(payload)
-		typ := val.Type()
-
-		// loop struct
-		for i := 0; i < typ.NumField(); i++ {
-			if f := typ.Field(i); f.IsExported() {
-				n := f.Name
-				m.publishComplex(fmt.Sprintf("%s/%s", topic, strings.ToLower(n[:1])+n[1:]), retained, val.Field(i).Interface())
-			}
-		}
+		// publish struct as json
 		b, err := json.Marshal(payload)
 		if err == nil {
 			m.publishString(topic, retained, string(b))
