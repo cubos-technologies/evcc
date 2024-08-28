@@ -359,19 +359,7 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
-	// number of loadpoints
-	topic := fmt.Sprintf("%s/loadpoints", m.root)
-	m.publish(topic, false, len(site.Loadpoints()))
-
-	// number of vehicles
-	topic = fmt.Sprintf("%s/vehicles", m.root)
-	m.publish(topic, false, len(site.Vehicles().Settings()))
-
-	for i := 0; i < 10; i++ {
-		m.publish(fmt.Sprintf("%s/site/pv/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/battery/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/vehicles/%d", m.root, i), true, nil)
-	}
+	var topic string
 
 	// alive indicator
 	var updated time.Time
