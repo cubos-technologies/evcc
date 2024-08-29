@@ -1402,10 +1402,17 @@ func (site *Site) countCircuitLoadpoint(lp *Loadpoint, prio int, circuit api.Cir
 	return count
 }
 
-/*
+/*	Function to Calculate Freepower of Circuits
+ *	Parameter[in]:
+ *	powerForLoadpointTmp   map[*Loadpoint]float64      Data of Loadpointpowers
+ *	Returnvalue:
+ *	powerForLoadpointTmp   map[*Loadpoint]float64      Data of Loadpointpowers
+ *	freePowerInCircuit     map[api.Circuit]float64     Freepower in Circuits
  *
+ *	Function calculates Freepower for the Circuits. If there is
+ *	not enough Power for the needed MinPower the Power is distributed
+ *	to the LP through this Function and LPs get reduced
  */
-// TODO optimize, comment
 func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]float64) (map[*Loadpoint]float64, map[api.Circuit]float64) {
 	freePowerInCircuit := make(map[api.Circuit]float64)
 	for _, c := range site.loadpointData.circuitList {
@@ -1413,6 +1420,11 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 			actualPowerOfAllLoadpointsInCircuit := site.getActualPowerOfAllLPInCircuit(c)
 			notLpConsumtion := c.GetChargePower() - actualPowerOfAllLoadpointsInCircuit
 			freePower := c.GetMaxPower() - notLpConsumtion
+			freeCurrentPower := c.GetMaxPhaseCurrent() * 230
+			if freePower > freeCurrentPower {
+				freePower = freeCurrentPower
+			}
+			//calculate freepower with parent
 			if freePower > site.loadpointData.circuitMinPower[c] {
 				freePowerInCircuit[c] = freePower - site.loadpointData.circuitMinPower[c]
 			} else {
@@ -1497,6 +1509,12 @@ func (site *Site) CalculateCircuitPower(powerForLoadpointTmp map[*Loadpoint]floa
 	return powerForLoadpointTmp, freePowerInCircuit
 }
 
+/*	Function to get the Loadpower of all LPs in Circuit
+ *	Parameter[in]:
+ *	circuit   api.Circuit    Circuit to check
+ *	Retrunvalue:
+ *	power     float64        Sum of all Power of Loadpoints in Circuit
+ */
 func (site *Site) getActualPowerOfAllLPInCircuit(circuit api.Circuit) float64 {
 	power := 0.0
 	current := 0.0
