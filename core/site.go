@@ -76,6 +76,10 @@ type meterError struct {
 	Error string `json:"error"`
 }
 
+type meterStatus struct {
+	Status string `json:"status"`
+}
+
 var _ site.API = (*Site)(nil)
 
 // Site is the main configuration container. A site can host multiple loadpoints.
@@ -491,6 +495,7 @@ func (site *Site) updatePvMeters() {
 	}
 
 	var totalEnergy, totalExportEnergy float64
+	var meterOnline bool
 
 	site.pvPower = 0
 
@@ -505,9 +510,11 @@ func (site *Site) updatePvMeters() {
 			if power < -500 {
 				site.log.WARN.Printf("pv %s power: %.0fW is negative - check configuration if sign is correct", ref, power)
 			}
+			meterOnline = true
 		} else {
 			site.log.ERROR.Printf("pv %s power: %v", ref, err)
 			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
 
 		// pv energy (production)
@@ -517,9 +524,11 @@ func (site *Site) updatePvMeters() {
 			if err == nil {
 				totalEnergy += energy
 				site.log.DEBUG.Printf("pv %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("pv %s energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -529,9 +538,11 @@ func (site *Site) updatePvMeters() {
 			if err == nil {
 				totalExportEnergy += exportEnergy
 				site.log.DEBUG.Printf("pv %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("pv %s export energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -541,9 +552,11 @@ func (site *Site) updatePvMeters() {
 			currents[0], currents[1], currents[2], err = m.Currents()
 			if err == nil {
 				site.log.DEBUG.Printf("pv %s currents: %v", ref, currents)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("pv %s currents: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -552,9 +565,11 @@ func (site *Site) updatePvMeters() {
 			voltages[0], voltages[1], voltages[2], err = m.Voltages()
 			if err == nil {
 				site.log.DEBUG.Printf("pv %s voltages: %v", ref, voltages)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("pv %s voltages: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		} else {
 			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
@@ -569,6 +584,11 @@ func (site *Site) updatePvMeters() {
 			UL1:    voltages[0] * 1000,
 			UL2:    voltages[1] * 1000,
 			UL3:    voltages[2] * 1000,
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 		}
 	}
 
@@ -586,6 +606,8 @@ func (site *Site) updateExtMeters() {
 		return
 	}
 
+	var meterOnline bool
+
 	mmm := make(map[string]meterMeasurement, len(site.extMeters))
 
 	for ref, meter := range site.extMeters {
@@ -593,9 +615,11 @@ func (site *Site) updateExtMeters() {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err == nil {
 			site.log.DEBUG.Printf("ext meter %s power: %.0fW", ref, power)
+			meterOnline = true
 		} else {
 			site.log.ERROR.Printf("ext meter %s power: %v", ref, err)
 			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
 		// ext energy
 		var energy float64
@@ -603,9 +627,11 @@ func (site *Site) updateExtMeters() {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("ext %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("ext %s energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 		// ext export energy
@@ -613,14 +639,21 @@ func (site *Site) updateExtMeters() {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("ext %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("ext %s export energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:  power,
 			Energy: energy,
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 		}
 	}
 	site.publish(keys.Meters, mmm)
@@ -633,6 +666,7 @@ func (site *Site) updateBatteryMeters() error {
 	}
 
 	var totalCapacity, totalEnergy float64
+	var meterOnline bool
 
 	site.batteryPower = 0
 	site.batterySoc = 0
@@ -643,6 +677,8 @@ func (site *Site) updateBatteryMeters() error {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err != nil {
 			// power is required- return on error
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/error": {Status: "offline"}})
 			return fmt.Errorf("battery %s power: %v", ref, err)
 		}
 
@@ -658,9 +694,11 @@ func (site *Site) updateBatteryMeters() error {
 			if err == nil {
 				totalEnergy += energy
 				site.log.DEBUG.Printf("battery %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("battery %s energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -669,9 +707,11 @@ func (site *Site) updateBatteryMeters() error {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("battery %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("battery %s export energy: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -693,9 +733,11 @@ func (site *Site) updateBatteryMeters() error {
 				if len(site.batteryMeters) > 1 {
 					site.log.DEBUG.Printf("battery %s soc: %.0f%%", ref, batSoc)
 				}
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("battery %s soc: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -705,9 +747,11 @@ func (site *Site) updateBatteryMeters() error {
 			currents[0], currents[1], currents[2], err = m.Currents()
 			if err == nil {
 				site.log.DEBUG.Printf("battery %s currents: %v", ref, currents)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("battery %s currents: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -716,9 +760,11 @@ func (site *Site) updateBatteryMeters() error {
 			voltages[0], voltages[1], voltages[2], err = m.Voltages()
 			if err == nil {
 				site.log.DEBUG.Printf("battery %s voltages: %v", ref, voltages)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("battery %s voltages: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		} else {
 			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
@@ -738,6 +784,11 @@ func (site *Site) updateBatteryMeters() error {
 			UL1:          voltages[0] * 1000,
 			UL2:          voltages[1] * 1000,
 			UL3:          voltages[2] * 1000,
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 		}
 	}
 
@@ -769,12 +820,16 @@ func (site *Site) updateGridMeter() error {
 		return nil
 	}
 
+	var meterOnline bool
+
 	for ref, meter := range site.gridMeter {
 		if res, err := backoff.RetryWithData(meter.CurrentPower, bo()); err == nil {
 			site.gridPower = res
 			site.log.DEBUG.Printf("grid meter: %.0fW", res)
 			site.publish(keys.GridPower, res)
 		} else {
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 			return fmt.Errorf("grid meter: %v", err)
 		}
 
@@ -788,9 +843,11 @@ func (site *Site) updateGridMeter() error {
 					phases := []float64{p1, p2, p3}
 					site.log.DEBUG.Printf("grid powers: %.0fW", phases)
 					site.publish(keys.GridPowers, phases)
+					meterOnline = true
 				} else {
 					site.log.ERROR.Printf("grid powers: %v", err)
 					site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+					meterOnline = false
 				}
 			}
 
@@ -798,18 +855,22 @@ func (site *Site) updateGridMeter() error {
 				phases := []float64{util.SignFromPower(i1, p1), util.SignFromPower(i2, p2), util.SignFromPower(i3, p3)}
 				site.log.DEBUG.Printf("grid currents: %.3gA", phases)
 				site.publish(keys.GridCurrents, phases)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("grid currents: %v", err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 
 			if u1, u2, u3, err := phaseMeter.(api.PhaseVoltages).Voltages(); err == nil {
 				phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
 				site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
 				site.publish(keys.GridVoltages, phases)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("grid voltages: %v", err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -821,9 +882,11 @@ func (site *Site) updateGridMeter() error {
 				mm.Energy = energy
 				site.publish(keys.GridEnergy, energy)
 				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("grid energy: %v", err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -833,9 +896,11 @@ func (site *Site) updateGridMeter() error {
 			if err == nil {
 				mm.EnergyNegative = exportEnergy
 				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("grid export energy: %v", err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -844,6 +909,11 @@ func (site *Site) updateGridMeter() error {
 		mmm := make(map[string]meterMeasurement)
 		mmm[ref+"/record"] = mm
 		site.publish(keys.Meters, mmm)
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+		}
 	}
 
 	// Publish total export energy
