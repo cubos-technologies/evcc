@@ -589,6 +589,8 @@ func (site *Site) updatePvMeters() {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
 		} else {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 
@@ -654,6 +656,8 @@ func (site *Site) updateExtMeters() {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
 		} else {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 	site.publish(keys.Meters, mmm)
@@ -789,6 +793,8 @@ func (site *Site) updateBatteryMeters() error {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
 		} else {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 
@@ -913,6 +919,8 @@ func (site *Site) updateGridMeter() error {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
 		} else {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 
@@ -991,6 +999,7 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 	// deduct smart loads
 	if len(site.auxMeters) > 0 {
 		var auxPower float64
+		var meterOnline bool
 		mmm := make(map[string]meterMeasurement, len(site.auxMeters))
 
 		for ref, meter := range site.auxMeters {
@@ -999,9 +1008,11 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 				auxPower += power
 				mm.Power = power
 				site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
+				meterOnline = true
 			} else {
 				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
 				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 
 			if m, ok := meter.(api.PhaseCurrents); ok {
@@ -1017,6 +1028,13 @@ func (site *Site) sitePower(totalChargePower, flexiblePower float64) (float64, b
 			}
 
 			mmm[ref+"/record"] = mm
+			if meterOnline {
+				site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+			} else {
+				site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+				// delete meterMeasurement from map to not publish incorrect values
+				delete(mmm, ref+"/record")
+			}
 		}
 
 		sitePower -= auxPower
