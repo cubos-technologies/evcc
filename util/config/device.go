@@ -45,8 +45,10 @@ func (d *configurableDevice[T]) ID() int {
 }
 
 func (d *configurableDevice[T]) Update(config map[string]any, instance T) error {
-	if err := d.config.Update(config); err != nil {
-		return err
+	if err := d.config.Read(config); err != nil {
+		if err := d.config.Update(config); err != nil {
+			return err
+		}
 	}
 	d.instance = instance
 	return nil
