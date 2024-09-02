@@ -50,7 +50,7 @@ type loadpointDynamicConfig struct {
 
 func getLoadpointDynamicConfig(lp loadpoint.API) loadpointDynamicConfig {
 	return loadpointDynamicConfig{
-		//Title:          lp.GetTitle(),
+		Title:          lp.GetTitle(),
 		Mode:           string(lp.GetMode()),
 		Priority:       lp.GetPriority(),
 		Phases:         lp.GetPhases(),
@@ -63,7 +63,7 @@ func getLoadpointDynamicConfig(lp loadpoint.API) loadpointDynamicConfig {
 }
 
 func loadpointUpdateDynamicConfig(payload loadpointDynamicConfig, lp loadpoint.API) error {
-	//lp.SetTitle(payload.Title)
+	lp.SetTitle(payload.Title)
 	lp.SetPriority(payload.Priority)
 	lp.SetSmartCostLimit(payload.SmartCostLimit)
 	lp.SetThresholds(payload.Thresholds)
