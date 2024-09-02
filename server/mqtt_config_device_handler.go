@@ -181,10 +181,6 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 	return nil
 }
 
-//	"shutdown": {"POST", "/shutdown", func(w http.ResponseWriter, r *http.Request) {
-//					shutdown()
-//					w.WriteHeader(http.StatusNoContent)
-//				}},
 func MQTTupdateSiteHandler(payload siteRefs, site site.API) error { //use this instead of mqtt updateref
 
 	if payload.Title != nil {
