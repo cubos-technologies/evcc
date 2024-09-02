@@ -1086,7 +1086,7 @@ func (lp *Loadpoint) resetPVTimer(typ ...string) {
 	if len(typ) == 1 {
 		msg = fmt.Sprintf("pv %s timer reset", typ[0])
 	}
-	lp.log.DEBUG.Printf(msg)
+	lp.log.DEBUG.Println(msg)
 
 	lp.pvTimer = time.Time{}
 	lp.publishTimer(pvTimer, 0, timerInactive)
@@ -1685,6 +1685,14 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 	lp.publish(keys.VehicleWelcomeActive, welcomeCharge)
 	lp.publish(keys.Connected, lp.connected())
 	lp.publish(keys.Charging, lp.charging())
+
+	if sr, ok := lp.charger.(api.StatusReasoner); ok && lp.GetStatus() == api.StatusB {
+		if r, err := sr.StatusReason(); err == nil {
+			lp.publish(keys.ChargerStatusReason, r)
+		} else {
+			lp.log.ERROR.Printf("charger status reason: %v", err)
+		}
+	}
 
 	// identify connected vehicle
 	if lp.connected() && !lp.chargerHasFeature(api.IntegratedDevice) {
