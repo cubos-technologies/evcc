@@ -800,7 +800,13 @@ func (site *Site) updateMeters() error {
 	g.Go(func() error { site.updateAuxMeters(); return nil })
 	g.Go(func() error { site.updateExtMeters(); return nil })
 
-	g.Go(func() error { site.circuit.Update(site.loadpointsAsCircuitDevices()); return nil })
+	g.Go(func() error {
+		if site.circuit != nil {
+			site.circuit.Update(site.loadpointsAsCircuitDevices())
+			return nil
+		}
+		return nil
+	})
 
 	g.Go(site.updateBatteryMeters)
 	g.Go(site.updateGridMeter)
