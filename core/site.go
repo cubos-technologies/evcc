@@ -994,7 +994,7 @@ func (site *Site) CalculateValues() {
 	}
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
-	freePower := max(-site.loadpointData.freePowerPID, 0)
+	freePower := -site.loadpointData.freePowerPID
 	site.publish("freePower", freePower)
 
 	powerForLoadpointTmp = site.CalculatePowerForEachLoadpoint(&freePower, powerForLoadpointTmp, &maxPowerLoadpointsPrio, &minPowerPVLoadpointsPrio, &minPowerLoadpointsPrio, &countLoadpointsPrio)
@@ -1227,6 +1227,7 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
 	derivative := errorPID - site.loadpointData.prevError
 	integral := KI*errorPID + site.loadpointData.freePowerPID
 	site.loadpointData.freePowerPID = KP*errorPID + integral + KD*derivative
+	site.loadpointData.freePowerPID = min(site.loadpointData.freePowerPID, 0)
 	site.log.DEBUG.Printf("Free Power: %.0fW", site.loadpointData.freePowerPID)
 	site.loadpointData.prevError = errorPID
 }
