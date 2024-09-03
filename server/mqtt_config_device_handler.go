@@ -344,18 +344,17 @@ func MQTTnewLoadpointHandler(payload string) error {
 	if err != nil {
 		return err
 	}
-	dev.Update(static, instance)
-
-	//TODO saving "dynamic" data in db
-	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
-		return err
-	}
 	_, err = config.AddConfig(templates.Loadpoint, "", static)
 	if err != nil {
 		return err
 	}
-
+	dev.Update(static, instance)
 	if err := h.Add(dev); err != nil {
+		return err
+	}
+
+	//TODO saving "dynamic" data in db
+	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
 		return err
 	}
 
@@ -368,11 +367,10 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 	var err error
 	switch class {
 	case templates.Charger:
-
-		if err = MQTTdeleteLoadpointHandler(id); err != nil {
+		if err = deleteDevice(id, config.Chargers()); err != nil {
 			return err
 		}
-		if err = deleteDevice(id, config.Chargers()); err != nil {
+		if err = MQTTdeleteLoadpointHandler(id); err != nil {
 			return err
 		}
 
