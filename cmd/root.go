@@ -210,8 +210,6 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// TODO
 	valueChan <- util.Param{Key: keys.Sponsor, Val: sponsor.Status()}
 
-	// setup mqtt publisher
-
 	// announce on mDNS
 	if err == nil && strings.HasSuffix(conf.Network.Host, ".local") {
 		err = configureMDNS(conf.Network)
@@ -258,6 +256,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// allow web access for vehicles
 	configureAuth(conf.Network, config.Instances(config.Vehicles().Devices()), httpd.Router(), valueChan)
 
+	// setup mqtt publisher
 	if err == nil && conf.Mqtt.Broker != "" {
 		var mqtt *server.MQTT
 		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site, func() {
