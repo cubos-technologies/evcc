@@ -18,8 +18,10 @@ type API interface {
 	// Config
 	GetGridMeterRef() string
 	SetGridMeterRef(string)
+	AppendGridMeter(api.Meter, string)
 	GetPVMeterRefs() []string
 	SetPVMeterRefs([]string)
+	AppendPVMeter(api.Meter, string)
 	GetBatteryMeterRefs() []string
 	SetBatteryMeterRefs([]string)
 	GetAuxMeterRefs() []string

@@ -70,12 +70,15 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 		}
 
 	case templates.Meter:
-		if conf, err = newDevice(class, req, meter.NewFromConfig, config.Meters()); err != nil {
+		var instance any
+		if conf, err, instance = newDeviceReturnInstance(class, req, meter.NewFromConfig, config.Meters()); err != nil {
 			return err
 		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(conf.ID), false, site)
+			appendMeterToSite(instance.(api.Meter), usage, req["cubos_id"].(string), site) //TODO Conversion Handling???
 		}
+
 	case templates.Vehicle:
 		if _, err = newDevice(class, req, vehicle.NewFromConfig, config.Vehicles()); err != nil {
 			return err
@@ -231,4 +234,18 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 	}
 	setConfigDirty()
 	return nil
+}
+
+func newDeviceReturnInstance[T any](class templates.Class, req map[string]any, newFromConf func(string, map[string]any) (T, error), h config.Handler[T]) (*config.Config, error, T) {
+	instance, err := newFromConf(typeTemplate, req)
+	if err != nil {
+		return nil, err, *new(T)
+	}
+
+	conf, err := config.AddConfig(class, typeTemplate, req)
+	if err != nil {
+		return nil, err, *new(T)
+	}
+
+	return &conf, h.Add(config.NewConfigurableDevice[T](conf, instance)), instance
 }

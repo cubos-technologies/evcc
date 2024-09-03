@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/templates"
@@ -127,3 +128,13 @@ func MQTTvalidateRefs(refs []string) error {
 	}
 	return nil
 }
+
+func appendMeterToSite(meter api.Meter, usage string, ref string, site site.API) {
+	switch usage {
+	case "pv":
+		site.AppendPVMeter(meter, ref)
+	case "grid":
+		site.AppendGridMeter(meter, ref)
+	}
+}
+

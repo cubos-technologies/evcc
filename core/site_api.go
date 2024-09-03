@@ -74,6 +74,22 @@ func (site *Site) SetGridMeterRef(ref string) {
 	settings.SetString(keys.GridMeter, ref)
 }
 
+func (site *Site) AppendGridMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	if len(site.gridMeter) == 0 {
+		site.gridMeter[ref] = meter
+	}
+}
+
+func (site *Site) AppendPVMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.pvMeters[ref] = meter //TODO check that ref is new????
+}
+
 // GetPVMeterRefs returns the PvMeterRef
 func (site *Site) GetPVMeterRefs() []string {
 	site.RLock()
