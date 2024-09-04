@@ -510,13 +510,13 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 
 	mm := make(map[string]meterMeasurement, len(site.auxMeters))
 
-	for i, meter := range site.auxMeters {
+	for ref, meter := range site.auxMeters {
 		if power, err := meter.CurrentPower(); err == nil {
 			site.auxPower += power
-			mm[i].Power = power
-			site.log.DEBUG.Printf("aux power %d: %.0fW", i+1, power)
+			mm[ref] = meterMeasurement{Power: power}
+			site.log.DEBUG.Printf("aux power %d: %.0fW", ref, power)
 		} else {
-			site.log.ERROR.Printf("aux meter %d: %v", i+1, err)
+			site.log.ERROR.Printf("aux meter %d: %v", ref, err)
 		}
 	}
 
