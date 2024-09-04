@@ -19,15 +19,23 @@ type API interface {
 	GetGridMeterRef() string
 	SetGridMeterRef(string)
 	AppendGridMeter(api.Meter, string)
+	DeleteGridMeter(string)
 	GetPVMeterRefs() []string
 	SetPVMeterRefs([]string)
 	AppendPVMeter(api.Meter, string)
+	DeletePVMeter(string)
 	GetBatteryMeterRefs() []string
 	SetBatteryMeterRefs([]string)
+	AppendBatteryMeter(api.Meter, string)
+	DeleteBatteryMeter(string)
 	GetAuxMeterRefs() []string
 	SetAuxMeterRefs([]string)
+	AppendAuxMeter(api.Meter, string)
+	DeleteAuxMeter(string)
 	GetExtMeterRefs() []string
 	SetExtMeterRefs([]string)
+	AppendExtMeter(api.Meter, string)
+	DeleteExtMeter(string)
 
 	// circuits
 	GetCircuit() api.Circuit

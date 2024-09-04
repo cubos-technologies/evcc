@@ -490,7 +490,11 @@ func (site *Site) publishDelta(key string, val interface{}) {
 
 // updatePvMeters updates pv meters. All measurements are optional.
 func (site *Site) updatePvMeters() {
+
 	if len(site.pvMeters) == 0 {
+		site.publish(keys.PvPower, site.pvPower)
+		site.publish(keys.PvEnergy, 0)
+		site.publish(keys.Pv, nil)
 		return
 	}
 
@@ -665,15 +669,18 @@ func (site *Site) updateExtMeters() {
 
 // updateBatteryMeters updates battery meters. Power is retried, other measurements are optional.
 func (site *Site) updateBatteryMeters() error {
+	site.batteryPower = 0
+	site.batterySoc = 0
 	if len(site.batteryMeters) == 0 {
+		site.publish(keys.BatterySoc, site.batterySoc)
+		site.publish(keys.BatteryPower, site.batteryPower)
+		site.publish(keys.BatteryEnergy, 0)
+		site.publish(keys.Battery, nil)
 		return nil
 	}
 
 	var totalCapacity, totalEnergy float64
 	var meterOnline bool
-
-	site.batteryPower = 0
-	site.batterySoc = 0
 
 	mmm := make(map[string]batteryMeasurement, len(site.batteryMeters))
 

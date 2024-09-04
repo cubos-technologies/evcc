@@ -171,13 +171,16 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
 			if usage, found := res["config"].(map[string]interface{})["usage"].(string); found {
 				MQTTupdateRef(usage, class, config.NameForID(id), true, site)
+				removeMeterfromSite(usage, req["cubos_id"].(string), site)
 			}
 		}
-		if err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
+		var instance any
+		if err, instance = updateDeviceReturnInstance(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
 			return err
 		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(id), false, site)
+			appendMeterToSite(instance.(api.Meter), usage, req["cubos_id"].(string), site)
 		}
 
 	case templates.Vehicle:
@@ -221,6 +224,7 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 				if err = MQTTupdateRef(usage, class, config.NameForID(id), true, site); err != nil {
 					return err
 				}
+				removeMeterfromSite(usage, configuration["cubos_id"].(string), site)
 			}
 		}
 	case templates.Vehicle:
@@ -248,4 +252,18 @@ func newDeviceReturnInstance[T any](class templates.Class, req map[string]any, n
 	}
 
 	return &conf, h.Add(config.NewConfigurableDevice[T](conf, instance)), instance
+}
+
+func updateDeviceReturnInstance[T any](id int, class templates.Class, conf map[string]any, newFromConf func(string, map[string]any) (T, error), h config.Handler[T]) (error, T) {
+	dev, instance, merged, err := deviceInstanceFromMergedConfig(id, class, conf, newFromConf, h)
+	if err != nil {
+		return err, *new(T)
+	}
+
+	configurable, ok := dev.(config.ConfigurableDevice[T])
+	if !ok {
+		return errors.New("not configurable"), *new(T)
+	}
+
+	return configurable.Update(merged, instance), instance
 }

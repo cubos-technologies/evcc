@@ -157,6 +157,26 @@ func appendMeterToSite(meter api.Meter, usage string, ref string, site site.API)
 		site.AppendPVMeter(meter, ref)
 	case "grid":
 		site.AppendGridMeter(meter, ref)
+	case "battery":
+		site.AppendBatteryMeter(meter, ref)
+	case "aux":
+		site.AppendAuxMeter(meter, ref)
+	case "ext":
+		site.AppendExtMeter(meter, ref)
 	}
 }
 
+func removeMeterfromSite(usage string, ref string, site site.API) {
+	switch usage {
+	case "pv":
+		site.DeletePVMeter(ref)
+	case "grid":
+		site.DeleteGridMeter(ref)
+	case "battery":
+		site.DeleteBatteryMeter(ref)
+	case "aux":
+		site.DeleteAuxMeter(ref)
+	case "ext":
+		site.DeleteExtMeter(ref)
+	}
+}

@@ -83,11 +83,25 @@ func (site *Site) AppendGridMeter(meter api.Meter, ref string) {
 	}
 }
 
+func (site *Site) DeleteGridMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.gridMeter, ref)
+}
+
 func (site *Site) AppendPVMeter(meter api.Meter, ref string) {
 	site.Lock()
 	defer site.Unlock()
 
 	site.pvMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeletePVMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.pvMeters, ref)
 }
 
 // GetPVMeterRefs returns the PvMeterRef
@@ -122,6 +136,20 @@ func (site *Site) SetBatteryMeterRefs(ref []string) {
 	settings.SetString(keys.BatteryMeters, strings.Join(filterConfigurable(ref), ","))
 }
 
+func (site *Site) AppendBatteryMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.batteryMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteBatteryMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.batteryMeters, ref)
+}
+
 // GetAuxMeterRefs returns the AuxMeterRef
 func (site *Site) GetAuxMeterRefs() []string {
 	site.RLock()
@@ -138,6 +166,20 @@ func (site *Site) SetAuxMeterRefs(ref []string) {
 	settings.SetString(keys.AuxMeters, strings.Join(filterConfigurable(ref), ","))
 }
 
+func (site *Site) AppendAuxMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.auxMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteAuxMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.auxMeters, ref)
+}
+
 func (site *Site) GetExtMeterRefs() []string {
 	site.RLock()
 	defer site.RUnlock()
@@ -151,6 +193,20 @@ func (site *Site) SetExtMeterRefs(ref []string) {
 
 	site.Meters.ExtMetersRef = ref
 	settings.SetString(keys.ExtMeters, strings.Join(filterConfigurable(ref), ","))
+}
+
+func (site *Site) AppendExtMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.extMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteExtMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.extMeters, ref)
 }
 
 // Loadpoints returns the loadpoints as api interfaces
