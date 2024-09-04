@@ -13,6 +13,7 @@ type siteRefs struct {
 	PV      *[]string
 	Battery *[]string
 	Aux     *[]string
+	Ext     *[]string
 }
 
 func MQTTupdateRef(usage string, class templates.Class, name string, delete bool, site site.API) error {
@@ -71,6 +72,19 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 			} else {
 				*newSiteRef.Aux = append(*newSiteRef.Aux, name)
 			}
+		case "ext":
+			newSiteRef.Ext = new([]string)
+			*newSiteRef.Ext = site.GetExtMeterRefs()
+			if delete {
+				for index, element := range *newSiteRef.Ext {
+					if element == name {
+						slice := *newSiteRef.Ext
+						*newSiteRef.Ext = append(slice[:index], slice[(index+1):]...)
+					}
+				}
+			} else {
+				*newSiteRef.Ext = append(*newSiteRef.Ext, name)
+			}
 		}
 
 		if err := MQTTupdateSiteHandler(newSiteRef, site); err != nil {
@@ -115,6 +129,14 @@ func MQTTupdateSiteHandler(payload siteRefs, site site.API) error {
 		}
 
 		site.SetBatteryMeterRefs(*payload.Battery)
+		setConfigDirty()
+	}
+	if payload.Ext != nil {
+		if err := MQTTvalidateRefs(*payload.Ext); err != nil {
+			return err
+		}
+
+		site.SetExtMeterRefs(*payload.Ext)
 		setConfigDirty()
 	}
 	return nil

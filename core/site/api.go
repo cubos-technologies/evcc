@@ -26,6 +26,8 @@ type API interface {
 	SetBatteryMeterRefs([]string)
 	GetAuxMeterRefs() []string
 	SetAuxMeterRefs([]string)
+	GetExtMeterRefs() []string
+	SetExtMeterRefs([]string)
 
 	// circuits
 	GetCircuit() api.Circuit
