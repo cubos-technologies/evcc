@@ -13,13 +13,13 @@ import (
 	"github.com/samber/lo"
 )
 
-func MQTTnewLoadpointHandler(payload string) error {
+func MQTTnewLoadpointHandler(payload string) (error, *core.Loadpoint) {
 	h := config.Loadpoints()
 	msg := strings.NewReader(payload)
 	dynamic, static, err := loadpointSplitConfig(msg)
 
 	if err != nil {
-		return err
+		return err, new(core.Loadpoint)
 	}
 
 	id := len(h.Devices())
@@ -32,27 +32,27 @@ func MQTTnewLoadpointHandler(payload string) error {
 
 	instance, err := core.NewLoadpointFromConfig(log, settings, static)
 	if err != nil {
-		return err
+		return err, new(core.Loadpoint)
 	}
 	_, err = config.AddConfig(templates.Loadpoint, "", static)
 	if err != nil {
-		return err
+		return err, new(core.Loadpoint)
 	}
 	dev.Update(static, instance)
 	if err := h.Add(dev); err != nil {
-		return err
+		return err, new(core.Loadpoint)
 	}
 
 	if err := loadpointUpdateDynamicConfig(dynamic, instance); err != nil {
-		return err
+		return err, new(core.Loadpoint)
 	}
 
 	setConfigDirty()
 
-	return err
+	return err, instance
 }
 
-func MQTTdeleteLoadpointHandler(id int) error {
+func MQTTdeleteLoadpointHandler(id int) (error, string) {
 	h := config.Loadpoints()
 
 	res := lo.Map(config.Loadpoints().Devices(), func(dev config.Device[loadpoint.API], _ int) loadpointFullConfig {
@@ -60,16 +60,18 @@ func MQTTdeleteLoadpointHandler(id int) error {
 	})
 
 	var idToDelete int
+	var charger string
 
 	for _, res2 := range res {
 		if res2.Charger == config.NameForID(id) {
 			idToDelete = res2.ID
+			charger = res2.loadpointStaticConfig.Charger
 		}
 	}
 
 	if err := deleteDevice(idToDelete, h); err != nil {
-		return err
+		return err, ""
 	}
 	setConfigDirty()
-	return nil
+	return nil, charger
 }

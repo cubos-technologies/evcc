@@ -9,6 +9,8 @@ import (
 type API interface {
 	Healthy() bool
 	Loadpoints() []loadpoint.API
+	AppendLoadpoint(string, any)
+	RemoveLoadpoint(string)
 	Vehicles() Vehicles
 
 	// Meta

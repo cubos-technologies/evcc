@@ -7,6 +7,7 @@ import (
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger"
+	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/meter"
@@ -64,10 +65,12 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 			return err
 		}
 
-		if err = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+		var instance any
+		if err, instance = MQTTnewLoadpointHandler(string(inrec)); err != nil {
 			MQTTdeleteDeviceHandler(conf.ID, site, templates.Charger)
 			return err
 		}
+		site.AppendLoadpoint("test", instance.(*core.Loadpoint))
 
 	case templates.Meter:
 		var instance any
@@ -207,9 +210,11 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 		if err = deleteDevice(id, config.Chargers()); err != nil {
 			return err
 		}
-		if err = MQTTdeleteLoadpointHandler(id); err != nil {
+		var charger string
+		if err, charger = MQTTdeleteLoadpointHandler(id); err != nil {
 			return err
 		}
+		site.RemoveLoadpoint(charger)
 
 	case templates.Meter:
 		conf, err := deviceConfig(templates.Meter, id, config.Meters())

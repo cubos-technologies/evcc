@@ -8,7 +8,9 @@ import (
 	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
+	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server/db/settings"
+	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/samber/lo"
 )
@@ -217,6 +219,45 @@ func (site *Site) DeleteExtMeter(ref string) {
 // Loadpoints returns the loadpoints as api interfaces
 func (site *Site) Loadpoints() []loadpoint.API {
 	return lo.Map(site.loadpoints, func(lp *Loadpoint, _ int) loadpoint.API { return lp })
+}
+
+// Loadpoints returns the loadpoints as api interfaces
+func (site *Site) AppendLoadpoint(ref string, instance any) {
+	site.Lock()
+	defer site.Unlock()
+	lp := instance.(*Loadpoint)
+	site.loadpoints = append(site.loadpoints, lp)
+	lpUIChan := make(chan util.Param)
+	lpPushChan := make(chan push.Event)
+
+	// pipe messages through go func to add id
+	go func(id int) {
+		for {
+			select {
+			case param := <-lpUIChan:
+				param.Loadpoint = &id
+				site.uiChan <- param
+			case ev := <-lpPushChan:
+				ev.Loadpoint = &id
+				site.pushChan <- ev
+			}
+		}
+	}(len(site.loadpoints) - 1)
+
+	lp.Prepare(lpUIChan, lpPushChan, site.lpUpdateChan)
+}
+
+func (site *Site) RemoveLoadpoint(ref string) { // TODO Identify Loadpoint by ChargerRef
+	site.Lock()
+	defer site.Unlock()
+	var index int
+	for i, lp := range site.loadpoints {
+		if lp.ChargerRef == ref {
+			index = i
+			break
+		}
+	}
+	site.loadpoints = append(site.loadpoints[:index], site.loadpoints[index+1:]...)
 }
 
 // loadpointsAsCircuitDevices returns the loadpoints as circuit devices

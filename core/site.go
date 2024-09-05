@@ -77,6 +77,7 @@ var _ site.API = (*Site)(nil)
 // Site is the main configuration container. A site can host multiple loadpoints.
 type Site struct {
 	uiChan       chan<- util.Param // client push messages
+	pushChan     chan<- push.Event
 	lpUpdateChan chan *Loadpoint
 
 	*Health
@@ -1832,6 +1833,7 @@ func (site *Site) Prepare(uiChan chan<- util.Param, pushChan chan<- push.Event) 
 
 	// use ch.In for writing
 	site.uiChan = ch.In
+	site.pushChan = pushChan
 
 	// use ch.Out for reading
 	go func() {
