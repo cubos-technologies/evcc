@@ -826,7 +826,6 @@ func (site *Site) updateEnergyMeters() error {
  */
 func (site *Site) CalculateValues() {
 	site.calcblock = true
-	t1 := time.Now()
 	//site.updateEnergyMeters()
 	var maxPowerLoadpointsPrio [maxPrio]float64   //Variable for all max Powers from active Loadpoints in each Priority
 	var minPowerLoadpointsPrio [maxPrio]float64   //Variable for all min Powers from active Loadpoints in each Priority
@@ -916,11 +915,7 @@ func (site *Site) CalculateValues() {
 	powerForLoadpointTmp = site.CalculatePowerForEachLoadpoint(&freePower, powerForLoadpointTmp, &maxPowerLoadpointsPrio, &minPowerPVLoadpointsPrio, &minPowerLoadpointsPrio, &countLoadpointsPrio)
 
 	for _, lp := range site.loadpoints {
-		if lp.GetStatus() == api.StatusB {
-			site.loadpointData.powerForLoadpointCalc[lp] = lp.GetMaxPower()
-		} else {
-			site.loadpointData.powerForLoadpointCalc[lp] = powerForLoadpointTmp[lp]
-		}
+		site.loadpointData.powerForLoadpointCalc[lp] = powerForLoadpointTmp[lp]
 	}
 
 	// Circuit check of distributed Power
@@ -937,8 +932,6 @@ func (site *Site) CalculateValues() {
 	site.Health.Update()
 
 	site.stats.Update(site)
-	t2 := time.Now()
-	site.publish("TimeCalc", t2.Sub(t1))
 	site.calcblock = false
 }
 
@@ -976,13 +969,9 @@ func (site *Site) GetDataFromAllLoadpointsForCalculation(totalChargePower, sumMi
 			*countActiveLoadpoints++
 			circuit := lp.GetCircuit()
 			site.CheckCircuitList(circuit)
-			if chargerStatus == api.StatusB {
-				powerForLoadpointTmp[lp] = lp.GetMinPower() * float64(lp.ActivePhases())
-			} else {
-				chargerMode := lp.GetMode()
-				prio := lp.EffectivePriority()
-				powerForLoadpointTmp[lp] = site.setValuesForLoadpointCalculation(chargerMode, circuit, lp, countLoadpointsPrio, maxPowerLoadpointsPrio, minPowerPVLoadpointsPrio, minPowerLoadpointsPrio, maxPowerLoadpoints, sumMinPower, sumFlexPower, lpChargePower, prio, rates)
-			}
+			chargerMode := lp.GetMode()
+			prio := lp.EffectivePriority()
+			powerForLoadpointTmp[lp] = site.setValuesForLoadpointCalculation(chargerMode, circuit, lp, countLoadpointsPrio, maxPowerLoadpointsPrio, minPowerPVLoadpointsPrio, minPowerLoadpointsPrio, maxPowerLoadpoints, sumMinPower, sumFlexPower, lpChargePower, prio, rates)
 		} else {
 			powerForLoadpointTmp[lp] = 0
 		}
@@ -1253,40 +1242,28 @@ func (site *Site) calculatePowerForLoadpointsInPrio(prio int, freePower *float64
 	}
 	for _, lp := range site.loadpoints {
 		chargerMode := lp.GetMode()
-		stateLoappoint := lp.GetStatus()
+		stateLoadpoint := lp.GetStatus()
 		minPowerChargepoint := lp.GetMinPower() * float64(lp.ActivePhases())
 		powerForLoadpoint := 0.0
-		if lp.EffectivePriority() == prio && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) {
-			if stateLoappoint == api.StatusC {
-				if mode == 1 {
-					powerForLoadpoint = lp.GetMaxPower()
-					if chargerMode == api.ModeMinPV {
-						powerForLoadpoint -= minPowerChargepoint
-					}
-				} else if mode == 2 {
-					powerForLoadpoint = powerForLoadpointOverall
-					if chargerMode == api.ModeMinPV {
-						powerForLoadpoint -= minPowerChargepoint
-					}
-				} else {
-					if chargerMode == api.ModePV {
-						if *freePower > minPowerChargepoint {
-							powerForLoadpoint = minPowerChargepoint
-						} else {
-							powerForLoadpoint = 0
-						}
-					} else {
-						powerForLoadpoint = 0
-					}
+		if lp.EffectivePriority() == prio && (chargerMode == api.ModeMinPV || chargerMode == api.ModePV) && site.checkVehicleState(stateLoadpoint) {
+			if mode == 1 {
+				powerForLoadpoint = lp.GetMaxPower()
+				if chargerMode == api.ModeMinPV {
+					powerForLoadpoint -= minPowerChargepoint
 				}
-			} else if stateLoappoint == api.StatusB {
+			} else if mode == 2 {
+				powerForLoadpoint = powerForLoadpointOverall
+				if chargerMode == api.ModeMinPV {
+					powerForLoadpoint -= minPowerChargepoint
+				}
+			} else {
 				if chargerMode == api.ModePV {
 					if *freePower > minPowerChargepoint {
-						powerForLoadpoint = 0
+						powerForLoadpoint = minPowerChargepoint
 					} else {
-						powerForLoadpoint = -minPowerChargepoint
+						powerForLoadpoint = 0
 					}
-				} else if chargerMode == api.ModeMinPV {
+				} else {
 					powerForLoadpoint = 0
 				}
 			}
@@ -1328,7 +1305,7 @@ func (site *Site) checkCircuit(circuit api.Circuit, powerForLoadpointTmp map[*Lo
 			if lp.GetStatus() == api.StatusC {
 				countLPPrio[lp.EffectivePriority()]++
 			}
-			allPowers += powerForLoadpointTmp[lp]
+			allPowers += min(powerForLoadpointTmp[lp], chargePower)
 			minPowerNeeded += minPower
 		}
 	}
@@ -1365,7 +1342,7 @@ func (site *Site) reduceCircuitPower(circuit api.Circuit, reducePower, countLPPr
 	}
 	powerReduction := reducePower / countLPPrio
 	for _, lp := range site.loadpoints {
-		if powerForLoadpointTmp[lp] > 0 && lp.GetStatus() != api.StatusB {
+		if powerForLoadpointTmp[lp] > 0 {
 			if site.checkCircuitList(circuit, lp) && prio == lp.EffectivePriority() {
 				minPower := lp.GetMinPower() * float64(lp.ActivePhases())
 				if powerForLoadpointTmp[lp] > powerReduction {
@@ -1469,6 +1446,8 @@ func (site *Site) UpdateSingleLoadpoint(lp *Loadpoint) {
  *	state           api.ChargeStatus        State to check
  *	Returnvalue:
  *	statecheck      bool                    Check answer
+ *
+ *	Checks if the Vehicle State is B or C
  */
 func (site *Site) checkVehicleState(state api.ChargeStatus) bool {
 	if state == api.StatusB || state == api.StatusC {
