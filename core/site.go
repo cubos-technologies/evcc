@@ -919,7 +919,9 @@ func (site *Site) CalculateValues() {
 	}
 
 	// Circuit check of distributed Power
-	site.checkCircuit(site.circuit, powerForLoadpointTmp)
+	if site.circuit != nil {
+		site.checkCircuit(site.circuit, powerForLoadpointTmp)
+	}
 
 	//transfer all Data from temporary Variable in LoadpointsPower
 	site.loadpointData.muLp.Lock()
