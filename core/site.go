@@ -478,7 +478,7 @@ func (site *Site) DumpConfig() {
 		lp.log.INFO.Printf("  meters:      charge %s", presence[lp.HasChargeMeter()])
 
 		if lp.HasChargeMeter() {
-			lp.log.INFO.Printf(meterCapabilities("charge", lp.chargeMeter))
+			lp.log.INFO.Print(meterCapabilities("charge", lp.chargeMeter))
 		}
 	}
 }
@@ -514,10 +514,10 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 	for ref, meter := range site.auxMeters {
 		if power, err := meter.CurrentPower(); err == nil {
 			site.auxPower += power
-			mm[ref] = meterMeasurement{Power: power}
-			site.log.DEBUG.Printf("aux power %d: %.0fW", ref, power)
+			mm[ref] = meterMeasurement{Power: int(power)}
+			site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
 		} else {
-			site.log.ERROR.Printf("aux meter %d: %v", ref, err)
+			site.log.ERROR.Printf("aux meter %s: %v", ref, err)
 		}
 	}
 
