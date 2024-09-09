@@ -270,6 +270,11 @@ func (c *Circuit) GetMaxPhaseCurrent() float64 {
 	return c.current
 }
 
+// GetMaxPhaseCurrent returns the actual current
+func (c *Circuit) GetChilds() []api.Circuit {
+	return c.children
+}
+
 // ValidatePower validates power request
 func (c *Circuit) ValidatePower(old, new float64) float64 {
 	delta := max(0, new-old)
