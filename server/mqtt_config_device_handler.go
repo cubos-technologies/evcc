@@ -61,6 +61,9 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 				"charger": charger,
 			}
 		}
+		if _, found := cc.Other["title"].(string); !found {
+			cc.Other["title"] = cc.Cubos_id
+		}
 		if inrec, err = json.Marshal(cc.Other); err != nil {
 			return err
 		}
@@ -176,6 +179,9 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 			cc.Other = map[string]interface{}{
 				"charger": charger,
 			}
+		}
+		if _, found := cc.Other["title"].(string); !found {
+			cc.Other["title"] = cc.Cubos_id
 		}
 		if inrec, err = json.Marshal(cc.Other); err != nil {
 			return err
