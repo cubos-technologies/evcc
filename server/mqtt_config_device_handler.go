@@ -169,6 +169,25 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 		if err = updateDevice(id, class, inInterface, charger.NewFromConfig, config.Chargers()); err != nil {
 			return err
 		}
+		charger := config.NameForID(id)
+		if cc.Other != nil {
+			cc.Other["charger"] = charger
+		} else {
+			cc.Other = map[string]interface{}{
+				"charger": charger,
+			}
+		}
+		if inrec, err = json.Marshal(cc.Other); err != nil {
+			return err
+		}
+		MQTTdeleteLoadpointHandler(id)
+		site.RemoveLoadpoint(charger)
+		var instance any
+		if err, instance = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+			MQTTdeleteDeviceHandler(id, site, templates.Charger)
+			return err
+		}
+		site.AppendLoadpoint("test", instance.(*core.Loadpoint))
 
 	case templates.Meter: //battery like meter
 		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
