@@ -1263,7 +1263,7 @@ func (lp *Loadpoint) publishTimer(name string, delay time.Duration, action strin
 }
 
 // pvMaxCurrent calculates the maximum target current for PV mode
-func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64) float64 {
+func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, freePower, sitePower float64) float64 {
 	// read only once to simplify testing
 	minCurrent := lp.effectiveMinCurrent()
 	maxCurrent := lp.effectiveMaxCurrent()
@@ -1281,7 +1281,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64) float6
 		// if we did scale, adjust the effective current to the new phase count
 		effectiveCurrent /= 3.0
 	}
-	deltaCurrent := powerToCurrent(-sitePower, activePhases)
+	deltaCurrent := powerToCurrent(-freePower, activePhases)
 	targetCurrent := max(-deltaCurrent, 0)
 
 	// in MinPV mode or under special conditions return at least minCurrent
@@ -1290,7 +1290,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64) float6
 		return minCurrent
 	}*/
 
-	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA + %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, deltaCurrent, sitePower, activePhases)
+	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA + %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, deltaCurrent, freePower, activePhases)
 
 	if mode == api.ModePV && lp.enabled && targetCurrent < minCurrent {
 		projectedSitePower := sitePower
@@ -1707,7 +1707,7 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower float64) {
+func (lp *Loadpoint) Update(freePower, sitePower float64) {
 
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
@@ -1765,7 +1765,7 @@ func (lp *Loadpoint) Update(sitePower float64) {
 		err = lp.fastCharging()
 
 	case mode == api.ModeMinPV || mode == api.ModePV:
-		targetCurrent := lp.pvMaxCurrent(mode, sitePower)
+		targetCurrent := lp.pvMaxCurrent(mode, freePower, sitePower)
 		//targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()

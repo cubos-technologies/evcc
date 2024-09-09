@@ -104,6 +104,7 @@ type Site struct {
 	loadpointData    LoadpointData
 	calcblock        bool
 	blockMeterUpdate bool
+	sitePower        float64
 	//maxBatteryPower     float64
 }
 
@@ -837,6 +838,7 @@ func (site *Site) CalculateValues() {
 	sumMinPower := 0.0                            //Variable to sum all min Power needed from Loadpoints and homePower
 	maxPowerLoadpoints := 0.0                     //Variable to get a Value of the max Power needed for all Loadpoints
 	gridPower := site.gridPower                   //Variable for Gridpower
+	sitePower := 0.0
 	site.mux.Lock()
 	pvPower := max(0, site.pvPower)   //temporary Variable for PVPower
 	batteryPower := site.batteryPower //temporary Variable for momentary Battery Power (negativ = Battery Charging, positiv = Battery Discharging)
@@ -909,6 +911,7 @@ func (site *Site) CalculateValues() {
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
 	freePower := -site.loadpointData.freePowerPID
+	sitePower = max(pvPower-sumMinPower, 0)
 	site.publish("freePower", freePower)
 
 	// Power calculation without Circuit
@@ -916,8 +919,11 @@ func (site *Site) CalculateValues() {
 
 	for _, lp := range site.loadpoints {
 		site.loadpointData.powerForLoadpointCalc[lp] = powerForLoadpointTmp[lp]
+		if lp.GetMode() != api.ModePV {
+			sitePower -= powerForLoadpointTmp[lp]
+		}
 	}
-
+	site.sitePower = max(sitePower, 0)
 	// Circuit check of distributed Power
 	if site.circuit != nil {
 		site.checkCircuit(site.circuit, powerForLoadpointTmp)
@@ -1151,6 +1157,7 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
 	errorPID := -pv + setpoint + flexPower
 	derivative := errorPID - site.loadpointData.prevError
 	integral := KI*errorPID + site.loadpointData.freePowerPID
+	//site.publish("Integral",integral)
 	site.loadpointData.freePowerPID = KP*errorPID + integral + KD*derivative
 	site.loadpointData.freePowerPID = min(site.loadpointData.freePowerPID, 0)
 	site.log.DEBUG.Printf("Free Power: %.0fW", site.loadpointData.freePowerPID)
@@ -1406,7 +1413,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	lp.Update(loadpointPower)
+	lp.Update(loadpointPower, site.sitePower)
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread
