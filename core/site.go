@@ -1178,7 +1178,7 @@ func (site *Site) CalculateSetpoint(flexpower, minpower, pv, maxpower, setpower 
 		if minpower <= pv { // Mittlerer Bereich
 			setpoint = minpower
 		} else { // linker Bereich
-			setpoint = pv
+			setpoint = max(pv, minpower)
 		}
 	}
 	return setpoint
