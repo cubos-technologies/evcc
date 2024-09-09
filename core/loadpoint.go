@@ -143,6 +143,7 @@ type Loadpoint struct {
 	remoteDemand   loadpoint.RemoteDemand // External status demand
 	chargePower    float64                // Charging power
 	chargeCurrents []float64              // Phase currents
+	chargeVoltages []float64              // Phase voltages
 	connectedTime  time.Time              // Time when vehicle was connected
 	pvTimer        time.Time              // PV enabled/disable timer
 	phaseTimer     time.Time              // 1p3p switch timer
@@ -1487,6 +1488,8 @@ func (lp *Loadpoint) updateChargeVoltages() {
 		return // we don't need the voltages
 	}
 
+	lp.chargeVoltages = nil
+
 	phaseMeter, ok := lp.chargeMeter.(api.PhaseVoltages)
 	if !ok {
 		return // don't guess
@@ -1502,6 +1505,7 @@ func (lp *Loadpoint) updateChargeVoltages() {
 	chargeVoltages := []float64{u1, u2, u3}
 	lp.log.DEBUG.Printf("charge voltages: %.3gV", chargeVoltages)
 	lp.publish(keys.ChargeVoltages, chargeVoltages)
+	lp.chargeVoltages = chargeVoltages
 
 	// Quine-McCluskey for (¬L1∧L2∧¬L3) ∨ (L1∧L2∧¬L3) ∨ (¬L1∧¬L2∧L3) ∨ (L1∧¬L2∧L3) ∨ (¬L1∧L2∧L3) -> ¬L1 ∧ L3 ∨ L2 ∧ ¬L3 ∨ ¬L2 ∧ L3
 	if !(u1 >= minActiveVoltage) && (u3 >= minActiveVoltage) || (u2 >= minActiveVoltage) && !(u3 >= minActiveVoltage) || !(u2 >= minActiveVoltage) && (u3 >= minActiveVoltage) {
@@ -1690,7 +1694,7 @@ func (lp *Loadpoint) SetEnvironment(greenShare float64, effPrice, effCo2 *float6
 }
 
 // GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
-func (lp *Loadpoint) GetDataFromLoadpoint() {
+func (lp *Loadpoint) GetDataFromLoadpoint() error {
 	lp.isUpdated = false
 	lp.UpdateChargePowerAndCurrents()
 
@@ -1713,7 +1717,7 @@ func (lp *Loadpoint) GetDataFromLoadpoint() {
 	if err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
-		return
+		return err
 	}
 
 	lp.publish(keys.VehicleWelcomeActive, welcomeCharge)
@@ -1739,8 +1743,9 @@ func (lp *Loadpoint) GetDataFromLoadpoint() {
 	if err := lp.syncCharger(); err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
-		return
+		return err
 	}
+	return nil
 }
 
 func (lp *Loadpoint) IsUpdated() bool {
@@ -1754,14 +1759,14 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower float64) {
+func (lp *Loadpoint) Update(sitePower float64) error {
 
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
 	if err != nil {
 		lp.log.ERROR.Println(err)
 		lp.isUpdated = true
-		return
+		return err
 	}
 	// track if remote disabled is actually active
 	remoteDisabled := loadpoint.RemoteEnable
@@ -1844,10 +1849,12 @@ func (lp *Loadpoint) Update(sitePower float64) {
 		lp.publish(keys.RemoteDisabled, remoteDisabled)
 	}
 
+	lp.isUpdated = true
 	// log any error
 	if err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
+		return err
 	}
-	lp.isUpdated = true
+	return nil
 }

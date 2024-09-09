@@ -64,6 +64,20 @@ type batteryMeasurement struct {
 
 type BatteryMeasurement = batteryMeasurement
 
+type ChargepointMeasurement struct {
+	Power     int    `json:"P"`
+	Energy    int    `json:"E"`
+	IL1       int    `json:"IL1"`
+	IL2       int    `json:"IL2"`
+	IL3       int    `json:"IL3"`
+	UL1       int    `json:"UL1"`
+	UL2       int    `json:"UL2"`
+	UL3       int    `json:"UL3"`
+	Rfid      string `json:"active_rfid_tag"`
+	Hems      int    `json:"hems_current"`
+	Timestamp int64  `json:"timestamp"`
+}
+
 type meterError struct {
 	Error string `json:"error"`
 }
@@ -1739,11 +1753,57 @@ func (site *Site) getActualPowerOfAllLPInCircuit(circuit api.Circuit) float64 {
  *	get the Power from the Map and Update the Loadpoint.
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
-	lp.GetDataFromLoadpoint()
+	var err error
+
+	err = lp.GetDataFromLoadpoint()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpoint[lp]
 	site.loadpointData.muLp.Unlock()
-	lp.Update(loadpointPower)
+	if err == nil {
+		err = lp.Update(loadpointPower)
+	}
+
+	ref := lp.title
+
+	if err != nil {
+		site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+		site.publish(keys.Chargepoints, map[string]meterError{ref + "/error": {Error: err.Error()}})
+		return
+	}
+
+	cpm := ChargepointMeasurement{
+		Power:     int(lp.chargePower),
+		Energy:    int(lp.sessionEnergy.totalKWh),
+		IL1:       0,
+		IL2:       0,
+		IL3:       0,
+		UL1:       -1,
+		UL2:       -1,
+		UL3:       -1,
+		Rfid:      lp.vehicleIdentifier,
+		Hems:      int(lp.chargeCurrent),
+		Timestamp: time.Now().Unix(),
+	}
+
+	currents := lp.chargeCurrents
+	if len(currents) == 3 {
+		cpm.IL1 = int(currents[0] * 1000)
+		cpm.IL2 = int(currents[1] * 1000)
+		cpm.IL3 = int(currents[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed current data: %v", ref, currents)
+	}
+	voltages := lp.chargeVoltages
+	if len(voltages) == 3 {
+		cpm.UL1 = int(voltages[0] * 1000)
+		cpm.UL2 = int(voltages[1] * 1000)
+		cpm.UL3 = int(voltages[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, currents)
+	}
+
+	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
+	site.publish(keys.Chargepoints, map[string]ChargepointMeasurement{ref + "/record": cpm})
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread
