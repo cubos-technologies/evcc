@@ -14,6 +14,7 @@ import (
 
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/provider/mqtt"
 	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server"
 	"github.com/evcc-io/evcc/server/updater"
@@ -300,6 +301,8 @@ func runRoot(cmd *cobra.Command, args []string) {
 		// TODO stop reboot loop if user updates config (or show countdown in UI)
 		log.FATAL.Println(err)
 		log.FATAL.Printf("will attempt restart in: %v", rebootDelay)
+		mqtt.Instance.Client.Publish(fmt.Sprintf("%s/status", conf.Mqtt.Topic), 1, true, "offline")
+		mqtt.Instance.Client.Publish(fmt.Sprintf("%s/error", conf.Mqtt.Topic), 1, true, err.Error())
 
 		go func() {
 			<-time.After(rebootDelay)
