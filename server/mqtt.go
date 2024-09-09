@@ -358,11 +358,10 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 	// publish
 	for p := range in {
 		switch {
-		case p.Loadpoint != nil:
-			id := *p.Loadpoint + 1
-			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
 		case p.Key == keys.Meters:
 			topic = fmt.Sprintf("%s/%s", m.root, keys.Meters)
+		case p.Key == keys.Chargepoints:
+			topic = fmt.Sprintf("%s/%s", m.root, keys.Chargepoints)
 		default:
 			continue
 		}

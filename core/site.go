@@ -34,35 +34,49 @@ import (
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Power          float64 `json:"P"`
-	Energy         float64 `json:"EPos"`
-	EnergyNegative float64 `json:"ENeg"`
-	IL1            float64 `json:"IL1"`
-	IL2            float64 `json:"IL2"`
-	IL3            float64 `json:"IL3"`
-	UL1            float64 `json:"UL1"`
-	UL2            float64 `json:"UL2"`
-	UL3            float64 `json:"UL3"`
+	Power          int `json:"P"`
+	Energy         int `json:"EPos"`
+	EnergyNegative int `json:"ENeg"`
+	IL1            int `json:"IL1"`
+	IL2            int `json:"IL2"`
+	IL3            int `json:"IL3"`
+	UL1            int `json:"UL1"`
+	UL2            int `json:"UL2"`
+	UL3            int `json:"UL3"`
 }
 
 type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power        float64 `json:"P"`
-	Energy       float64 `json:"E"`
-	Soc          float64 `json:"soc"`
-	Capacity     float64 `json:"capacity"`
-	Controllable bool    `json:"controllable"`
-	IL1          float64 `json:"IL1"`
-	IL2          float64 `json:"IL2"`
-	IL3          float64 `json:"IL3"`
-	UL1          float64 `json:"UL1"`
-	UL2          float64 `json:"UL2"`
-	UL3          float64 `json:"UL3"`
+	Power        int  `json:"P"`
+	Energy       int  `json:"E"`
+	Soc          int  `json:"soc"`
+	Capacity     int  `json:"capacity"`
+	Controllable bool `json:"controllable"`
+	IL1          int  `json:"IL1"`
+	IL2          int  `json:"IL2"`
+	IL3          int  `json:"IL3"`
+	UL1          int  `json:"UL1"`
+	UL2          int  `json:"UL2"`
+	UL3          int  `json:"UL3"`
 }
 
 type BatteryMeasurement = batteryMeasurement
+
+type ChargepointMeasurement struct {
+	Power     int    `json:"P"`
+	Energy    int    `json:"E"`
+	IL1       int    `json:"IL1"`
+	IL2       int    `json:"IL2"`
+	IL3       int    `json:"IL3"`
+	UL1       int    `json:"UL1"`
+	UL2       int    `json:"UL2"`
+	UL3       int    `json:"UL3"`
+	Rfid      string `json:"active_rfid_tag"`
+	Hems      int    `json:"hems_current"`
+	Timestamp int64  `json:"timestamp"`
+}
 
 type meterError struct {
 	Error string `json:"error"`
@@ -484,7 +498,7 @@ func (site *Site) DumpConfig() {
 		lp.log.INFO.Printf("  meters:      charge %s", presence[lp.HasChargeMeter()])
 
 		if lp.HasChargeMeter() {
-			lp.log.INFO.Printf(meterCapabilities("charge", lp.chargeMeter))
+			lp.log.INFO.Print(meterCapabilities("charge", lp.chargeMeter))
 		}
 	}
 }
@@ -520,10 +534,10 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 	for ref, meter := range site.auxMeters {
 		if power, err := meter.CurrentPower(); err == nil {
 			site.auxPower += power
-			mm[ref] = meterMeasurement{Power: power}
-			site.log.DEBUG.Printf("aux power %d: %.0fW", ref, power)
+			mm[ref] = meterMeasurement{Power: int(power)}
+			site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
 		} else {
-			site.log.ERROR.Printf("aux meter %d: %v", ref, err)
+			site.log.ERROR.Printf("aux meter %s: %v", ref, err)
 		}
 	}
 
@@ -623,14 +637,14 @@ func (site *Site) updatePvMeters() {
 		}
 
 		mmm[ref+"/record"] = meterMeasurement{
-			Power:  power,
-			Energy: energy,
-			IL1:    currents[0] * 1000,
-			IL2:    currents[1] * 1000,
-			IL3:    currents[2] * 1000,
-			UL1:    voltages[0] * 1000,
-			UL2:    voltages[1] * 1000,
-			UL3:    voltages[2] * 1000,
+			Power:  int(power),
+			Energy: int(energy),
+			IL1:    int(currents[0] * 1000),
+			IL2:    int(currents[1] * 1000),
+			IL3:    int(currents[2] * 1000),
+			UL1:    int(voltages[0] * 1000),
+			UL2:    int(voltages[1] * 1000),
+			UL3:    int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -698,8 +712,8 @@ func (site *Site) updateExtMeters() {
 			}
 		}
 		mmm[ref+"/record"] = meterMeasurement{
-			Power:  power,
-			Energy: energy,
+			Power:  int(power),
+			Energy: int(energy),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -831,17 +845,17 @@ func (site *Site) updateBatteryMeters() error {
 		_, controllable := meter.(api.BatteryController)
 
 		mmm[ref+"/record"] = batteryMeasurement{
-			Power:        power,
-			Energy:       energy,
-			Soc:          batSoc,
-			Capacity:     capacity,
+			Power:        int(power),
+			Energy:       int(energy),
+			Soc:          int(batSoc),
+			Capacity:     int(capacity),
 			Controllable: controllable,
-			IL1:          currents[0] * 1000,
-			IL2:          currents[1] * 1000,
-			IL3:          currents[2] * 1000,
-			UL1:          voltages[0] * 1000,
-			UL2:          voltages[1] * 1000,
-			UL3:          voltages[2] * 1000,
+			IL1:          int(currents[0] * 1000),
+			IL2:          int(currents[1] * 1000),
+			IL3:          int(currents[2] * 1000),
+			UL1:          int(voltages[0] * 1000),
+			UL2:          int(voltages[1] * 1000),
+			UL3:          int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -943,7 +957,7 @@ func (site *Site) updateGridMeter() error {
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				mm.Energy = energy
+				mm.Energy = int(energy)
 				site.publish(keys.GridEnergy, energy)
 				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 				meterOnline = true
@@ -958,7 +972,7 @@ func (site *Site) updateGridMeter() error {
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				mm.EnergyNegative = exportEnergy
+				mm.EnergyNegative = int(exportEnergy)
 				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
 				meterOnline = true
 			} else {
@@ -968,7 +982,7 @@ func (site *Site) updateGridMeter() error {
 			}
 		}
 
-		mm.Power = site.gridPower
+		mm.Power = int(site.gridPower)
 
 		mmm := make(map[string]meterMeasurement)
 		mmm[ref+"/record"] = mm
@@ -1687,11 +1701,57 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
  *	get the Power from the Map and Update the Loadpoint.
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
-	lp.GetDataFromLoadpoint()
+	var err error
+
+	err = lp.GetDataFromLoadpoint()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	lp.Update(loadpointPower, site.sitePower)
+	if err == nil {
+		err = lp.Update(loadpointPower, site.sitePower)
+	}
+
+	ref := lp.title
+
+	if err != nil {
+		site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+		site.publish(keys.Chargepoints, map[string]meterError{ref + "/error": {Error: err.Error()}})
+		return
+	}
+
+	cpm := ChargepointMeasurement{
+		Power:     int(lp.chargePower),
+		Energy:    int(lp.sessionEnergy.totalKWh),
+		IL1:       0,
+		IL2:       0,
+		IL3:       0,
+		UL1:       -1,
+		UL2:       -1,
+		UL3:       -1,
+		Rfid:      lp.vehicleIdentifier,
+		Hems:      int(lp.chargeCurrent),
+		Timestamp: time.Now().Unix(),
+	}
+
+	currents := lp.chargeCurrents
+	if len(currents) == 3 {
+		cpm.IL1 = int(currents[0] * 1000)
+		cpm.IL2 = int(currents[1] * 1000)
+		cpm.IL3 = int(currents[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed current data: %v", ref, currents)
+	}
+	voltages := lp.chargeVoltages
+	if len(voltages) == 3 {
+		cpm.UL1 = int(voltages[0] * 1000)
+		cpm.UL2 = int(voltages[1] * 1000)
+		cpm.UL3 = int(voltages[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, currents)
+	}
+
+	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
+	site.publish(keys.Chargepoints, map[string]ChargepointMeasurement{ref + "/record": cpm})
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread
