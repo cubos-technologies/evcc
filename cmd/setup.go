@@ -988,8 +988,9 @@ func configureLoadpoints(conf globalconfig.All) error {
 		// TODO: proper handling of id/name
 		delete(cc.Other, "id")
 		delete(cc.Other, "name")
-
-		instance, err := core.NewLoadpointFromConfig(log, settings, cc.Other)
+		tmp := make(map[string]interface{})
+		tmp["charger"] = cc.Other["charger"]
+		instance, err := core.NewLoadpointFromConfig(log, settings, tmp)
 		if err != nil {
 			return fmt.Errorf("failed configuring loadpoint: %w", err)
 		}

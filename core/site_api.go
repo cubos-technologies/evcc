@@ -8,7 +8,9 @@ import (
 	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
+	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server/db/settings"
+	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/samber/lo"
 )
@@ -74,6 +76,38 @@ func (site *Site) SetGridMeterRef(ref string) {
 	settings.SetString(keys.GridMeter, ref)
 }
 
+func (site *Site) AppendGridMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	if len(site.gridMeter) == 0 {
+		site.gridMeter[ref] = meter
+	}
+}
+
+func (site *Site) DeleteGridMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.gridMeter, ref)
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
+}
+
+func (site *Site) AppendPVMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.pvMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeletePVMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.pvMeters, ref)
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
+}
+
 // GetPVMeterRefs returns the PvMeterRef
 func (site *Site) GetPVMeterRefs() []string {
 	site.RLock()
@@ -106,6 +140,21 @@ func (site *Site) SetBatteryMeterRefs(ref []string) {
 	settings.SetString(keys.BatteryMeters, strings.Join(filterConfigurable(ref), ","))
 }
 
+func (site *Site) AppendBatteryMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.batteryMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteBatteryMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.batteryMeters, ref)
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
+}
+
 // GetAuxMeterRefs returns the AuxMeterRef
 func (site *Site) GetAuxMeterRefs() []string {
 	site.RLock()
@@ -122,9 +171,93 @@ func (site *Site) SetAuxMeterRefs(ref []string) {
 	settings.SetString(keys.AuxMeters, strings.Join(filterConfigurable(ref), ","))
 }
 
+func (site *Site) AppendAuxMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.auxMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteAuxMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.auxMeters, ref)
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
+}
+
+func (site *Site) GetExtMeterRefs() []string {
+	site.RLock()
+	defer site.RUnlock()
+	return site.Meters.ExtMetersRef
+}
+
+// SetExtMeterRefs sets the ExtMeterRef
+func (site *Site) SetExtMeterRefs(ref []string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.Meters.ExtMetersRef = ref
+	settings.SetString(keys.ExtMeters, strings.Join(filterConfigurable(ref), ","))
+}
+
+func (site *Site) AppendExtMeter(meter api.Meter, ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	site.extMeters[ref] = meter //TODO check that ref is new????
+}
+
+func (site *Site) DeleteExtMeter(ref string) {
+	site.Lock()
+	defer site.Unlock()
+
+	delete(site.extMeters, ref)
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
+}
+
 // Loadpoints returns the loadpoints as api interfaces
 func (site *Site) Loadpoints() []loadpoint.API {
 	return lo.Map(site.loadpoints, func(lp *Loadpoint, _ int) loadpoint.API { return lp })
+}
+
+// Loadpoints returns the loadpoints as api interfaces
+func (site *Site) AppendLoadpoint(ref string, instance any) {
+	site.Lock()
+	defer site.Unlock()
+	lp := instance.(*Loadpoint)
+	site.loadpoints = append(site.loadpoints, lp)
+	lpUIChan := make(chan util.Param)
+	lpPushChan := make(chan push.Event)
+
+	// pipe messages through go func to add id
+	go func(id int) {
+		for {
+			select {
+			case param := <-lpUIChan:
+				param.Loadpoint = &id
+				site.uiChan <- param
+			case ev := <-lpPushChan:
+				ev.Loadpoint = &id
+				site.pushChan <- ev
+			}
+		}
+	}(len(site.loadpoints) - 1)
+
+	lp.Prepare(lpUIChan, lpPushChan, site.lpUpdateChan)
+}
+
+func (site *Site) RemoveLoadpoint(ref string) { // TODO Identify Loadpoint by ChargerRef
+	site.Lock()
+	defer site.Unlock()
+	var index int
+	for i, lp := range site.loadpoints {
+		if lp.ChargerRef == ref {
+			index = i
+			break
+		}
+	}
+	site.loadpoints = append(site.loadpoints[:index], site.loadpoints[index+1:]...)
 }
 
 // loadpointsAsCircuitDevices returns the loadpoints as circuit devices
