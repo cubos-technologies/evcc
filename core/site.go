@@ -602,7 +602,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 				meterOnline = false
 			}
 		}
-		mm.Timestamp = time.Now().Unix()
+		mm.Timestamp = time.Now().UnixMilli()
 		if meterOnline {
 			mmm[ref+"/record"] = mm
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -720,7 +720,7 @@ func (site *Site) updatePvMeters() {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
-			Timestamp:      time.Now().Unix(),
+			Timestamp:      time.Now().UnixMilli(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -828,7 +828,7 @@ func (site *Site) updateExtMeters() {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
-			Timestamp:      time.Now().Unix(),
+			Timestamp:      time.Now().UnixMilli(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -973,7 +973,7 @@ func (site *Site) updateBatteryMeters() error {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
-			Timestamp:      time.Now().Unix(),
+			Timestamp:      time.Now().UnixMilli(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -1107,7 +1107,7 @@ func (site *Site) updateGridMeter() error {
 		}
 
 		mm.Power = int(site.gridPower)
-		mm.Timestamp = time.Now().Unix()
+		mm.Timestamp = time.Now().UnixMilli()
 
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -1909,7 +1909,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 		UL3:       -1,
 		Rfid:      lp.vehicleIdentifier,
 		Hems:      int(lp.chargeCurrent),
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	currents := lp.chargeCurrents
