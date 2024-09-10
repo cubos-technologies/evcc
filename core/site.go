@@ -1878,26 +1878,21 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 		Timestamp: time.Now().Unix(),
 	}
 
-	if _, ok := lp.chargeMeter.(api.PhaseCurrents); ok {
-		currents := lp.chargeCurrents
-		if len(currents) == 3 {
-			cpm.IL1 = int(currents[0] * 1000)
-			cpm.IL2 = int(currents[1] * 1000)
-			cpm.IL3 = int(currents[2] * 1000)
-		} else {
-			lp.log.WARN.Printf("loadpoint %s: no or malformed current data: %v", ref, currents)
-		}
+	currents := lp.chargeCurrents
+	if len(currents) == 3 {
+		cpm.IL1 = int(currents[0] * 1000)
+		cpm.IL2 = int(currents[1] * 1000)
+		cpm.IL3 = int(currents[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed current data: %v", ref, currents)
 	}
-
-	if _, ok := lp.chargeMeter.(api.PhaseVoltages); ok {
-		voltages := lp.chargeVoltages
-		if len(voltages) == 3 {
-			cpm.UL1 = int(voltages[0] * 1000)
-			cpm.UL2 = int(voltages[1] * 1000)
-			cpm.UL3 = int(voltages[2] * 1000)
-		} else {
-			lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, voltages)
-		}
+	voltages := lp.chargeVoltages
+	if len(voltages) == 3 {
+		cpm.UL1 = int(voltages[0] * 1000)
+		cpm.UL2 = int(voltages[1] * 1000)
+		cpm.UL3 = int(voltages[2] * 1000)
+	} else {
+		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, voltages)
 	}
 
 	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
