@@ -666,7 +666,7 @@ func (site *Site) updatePvMeters() {
 		// pv export energy
 		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
 				totalExportEnergy += exportEnergy
 				site.log.DEBUG.Printf("pv %s export energy: %.0fWh", ref, exportEnergy)
@@ -761,7 +761,7 @@ func (site *Site) updateExtMeters() {
 		// ext energy
 		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
-			energy, err := energyMeter.TotalEnergy()
+			energy, err = energyMeter.TotalEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("ext %s energy: %.0fWh", ref, energy)
 				meterOnline = true
@@ -774,7 +774,7 @@ func (site *Site) updateExtMeters() {
 		// ext export energy
 		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("ext %s export energy: %.0fWh", ref, exportEnergy)
 				meterOnline = true
@@ -872,7 +872,7 @@ func (site *Site) updateBatteryMeters() error {
 		// battery total energy
 		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
-			energy, err := energyMeter.TotalEnergy()
+			energy, err = energyMeter.TotalEnergy()
 			if err == nil {
 				totalEnergy += energy
 				site.log.DEBUG.Printf("battery %s energy: %.0fWh", ref, energy)
@@ -887,7 +887,7 @@ func (site *Site) updateBatteryMeters() error {
 		// battery export energy
 		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
 				site.log.DEBUG.Printf("battery %s export energy: %.0fWh", ref, exportEnergy)
 				meterOnline = true
@@ -1010,6 +1010,7 @@ func (site *Site) updateGridMeter() error {
 		return nil
 	}
 
+	var mm meterMeasurement
 	var meterOnline bool
 
 	for ref, meter := range site.gridMeter {
@@ -1042,6 +1043,9 @@ func (site *Site) updateGridMeter() error {
 			}
 
 			if i1, i2, i3, err := phaseMeter.Currents(); err == nil {
+				mm.IL1 = int(i1 * 1000)
+				mm.IL2 = int(i2 * 1000)
+				mm.IL3 = int(i3 * 1000)
 				phases := []float64{util.SignFromPower(i1, p1), util.SignFromPower(i2, p2), util.SignFromPower(i3, p3)}
 				site.log.DEBUG.Printf("grid currents: %.3gA", phases)
 				site.publish(keys.GridCurrents, phases)
@@ -1053,6 +1057,9 @@ func (site *Site) updateGridMeter() error {
 			}
 
 			if u1, u2, u3, err := phaseMeter.(api.PhaseVoltages).Voltages(); err == nil {
+				mm.UL1 = int(u1 * 1000)
+				mm.UL2 = int(u2 * 1000)
+				mm.UL3 = int(u3 * 1000)
 				phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
 				site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
 				site.publish(keys.GridVoltages, phases)
@@ -1064,7 +1071,6 @@ func (site *Site) updateGridMeter() error {
 			}
 		}
 
-		var mm meterMeasurement
 		// grid energy (import)
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
