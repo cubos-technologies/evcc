@@ -50,17 +50,18 @@ type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power        int  `json:"P"`
-	Energy       int  `json:"E"`
-	Soc          int  `json:"soc"`
-	Capacity     int  `json:"capacity"`
-	Controllable bool `json:"controllable"`
-	IL1          int  `json:"IL1"`
-	IL2          int  `json:"IL2"`
-	IL3          int  `json:"IL3"`
-	UL1          int  `json:"UL1"`
-	UL2          int  `json:"UL2"`
-	UL3          int  `json:"UL3"`
+	Power          int  `json:"P"`
+	Energy         int  `json:"EPos"`
+	EnergyNegative int  `json:"ENeg"`
+	Soc            int  `json:"soc"`
+	Capacity       int  `json:"capacity"`
+	Controllable   bool `json:"controllable"`
+	IL1            int  `json:"IL1"`
+	IL2            int  `json:"IL2"`
+	IL3            int  `json:"IL3"`
+	UL1            int  `json:"UL1"`
+	UL2            int  `json:"UL2"`
+	UL3            int  `json:"UL3"`
 }
 
 type BatteryMeasurement = batteryMeasurement
@@ -560,6 +561,19 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 				meterOnline = false
 			}
 		}
+		// aux export energy
+		if energyMeter, ok := meter.(api.ExportEnergy); err == nil && ok {
+			exportEnergy, err := energyMeter.ExportEnergy()
+			if err == nil {
+				mm.EnergyNegative = int(exportEnergy)
+				site.log.DEBUG.Printf("aux export energy %s: %.0fW", ref, exportEnergy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
 		// aux currents
 		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
 			var currents [3]float64
@@ -656,6 +670,7 @@ func (site *Site) updatePvMeters() {
 		}
 
 		// pv export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
@@ -699,14 +714,15 @@ func (site *Site) updatePvMeters() {
 		}
 
 		mmm[ref+"/record"] = meterMeasurement{
-			Power:  int(power),
-			Energy: int(energy),
-			IL1:    int(currents[0] * 1000),
-			IL2:    int(currents[1] * 1000),
-			IL3:    int(currents[2] * 1000),
-			UL1:    int(voltages[0] * 1000),
-			UL2:    int(voltages[1] * 1000),
-			UL3:    int(voltages[2] * 1000),
+			Power:          int(power),
+			Energy:         int(energy),
+			EnergyNegative: int(exportEnergy),
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -762,6 +778,7 @@ func (site *Site) updateExtMeters() {
 			}
 		}
 		// ext export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
@@ -804,14 +821,15 @@ func (site *Site) updateExtMeters() {
 		}
 
 		mmm[ref+"/record"] = meterMeasurement{
-			Power:  int(power),
-			Energy: int(energy),
-			IL1:    int(currents[0] * 1000),
-			IL2:    int(currents[1] * 1000),
-			IL3:    int(currents[2] * 1000),
-			UL1:    int(voltages[0] * 1000),
-			UL2:    int(voltages[1] * 1000),
-			UL3:    int(voltages[2] * 1000),
+			Power:          int(power),
+			Energy:         int(energy),
+			EnergyNegative: int(exportEnergy),
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -873,6 +891,7 @@ func (site *Site) updateBatteryMeters() error {
 		}
 
 		// battery export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
@@ -943,17 +962,18 @@ func (site *Site) updateBatteryMeters() error {
 		_, controllable := meter.(api.BatteryController)
 
 		mmm[ref+"/record"] = batteryMeasurement{
-			Power:        int(power),
-			Energy:       int(energy),
-			Soc:          int(batSoc),
-			Capacity:     int(capacity),
-			Controllable: controllable,
-			IL1:          int(currents[0] * 1000),
-			IL2:          int(currents[1] * 1000),
-			IL3:          int(currents[2] * 1000),
-			UL1:          int(voltages[0] * 1000),
-			UL2:          int(voltages[1] * 1000),
-			UL3:          int(voltages[2] * 1000),
+			Power:          int(power),
+			Energy:         int(energy),
+			EnergyNegative: int(exportEnergy),
+			Soc:            int(batSoc),
+			Capacity:       int(capacity),
+			Controllable:   controllable,
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
