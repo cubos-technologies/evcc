@@ -35,33 +35,35 @@ import (
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Power          int `json:"P"`
-	Energy         int `json:"EPos"`
-	EnergyNegative int `json:"ENeg"`
-	IL1            int `json:"IL1"`
-	IL2            int `json:"IL2"`
-	IL3            int `json:"IL3"`
-	UL1            int `json:"UL1"`
-	UL2            int `json:"UL2"`
-	UL3            int `json:"UL3"`
+	Power          int   `json:"P"`
+	Energy         int   `json:"EPos"`
+	EnergyNegative int   `json:"ENeg"`
+	IL1            int   `json:"IL1"`
+	IL2            int   `json:"IL2"`
+	IL3            int   `json:"IL3"`
+	UL1            int   `json:"UL1"`
+	UL2            int   `json:"UL2"`
+	UL3            int   `json:"UL3"`
+	Timestamp      int64 `json:"timestamp"`
 }
 
 type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power          int  `json:"P"`
-	Energy         int  `json:"EPos"`
-	EnergyNegative int  `json:"ENeg"`
-	Soc            int  `json:"soc"`
-	Capacity       int  `json:"capacity"`
-	Controllable   bool `json:"controllable"`
-	IL1            int  `json:"IL1"`
-	IL2            int  `json:"IL2"`
-	IL3            int  `json:"IL3"`
-	UL1            int  `json:"UL1"`
-	UL2            int  `json:"UL2"`
-	UL3            int  `json:"UL3"`
+	Power          int   `json:"P"`
+	Energy         int   `json:"EPos"`
+	EnergyNegative int   `json:"ENeg"`
+	Soc            int   `json:"soc"`
+	Capacity       int   `json:"capacity"`
+	Controllable   bool  `json:"controllable"`
+	IL1            int   `json:"IL1"`
+	IL2            int   `json:"IL2"`
+	IL3            int   `json:"IL3"`
+	UL1            int   `json:"UL1"`
+	UL2            int   `json:"UL2"`
+	UL3            int   `json:"UL3"`
+	Timestamp      int64 `json:"timestamp"`
 }
 
 type BatteryMeasurement = batteryMeasurement
@@ -600,6 +602,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 				meterOnline = false
 			}
 		}
+		mm.Timestamp = time.Now().Unix()
 		if meterOnline {
 			mmm[ref+"/record"] = mm
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -717,6 +720,7 @@ func (site *Site) updatePvMeters() {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().Unix(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -824,6 +828,7 @@ func (site *Site) updateExtMeters() {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().Unix(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -968,6 +973,7 @@ func (site *Site) updateBatteryMeters() error {
 			UL1:            int(voltages[0] * 1000),
 			UL2:            int(voltages[1] * 1000),
 			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().Unix(),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -1101,6 +1107,7 @@ func (site *Site) updateGridMeter() error {
 		}
 
 		mm.Power = int(site.gridPower)
+		mm.Timestamp = time.Now().Unix()
 
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
