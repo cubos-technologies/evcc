@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
@@ -1848,13 +1849,13 @@ func (site *Site) getActualPowerOfAllLPInCircuit(circuit api.Circuit) float64 {
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	var err error
 
-	err = lp.GetDataFromLoadpoint()
+	getDataError := lp.GetDataFromLoadpoint()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpoint[lp]
 	site.loadpointData.muLp.Unlock()
-	if err == nil {
-		err = lp.Update(loadpointPower)
-	}
+	lpUpdateError := lp.Update(loadpointPower)
+	// set the err var to the first non-nil value
+	err = cmp.Or(getDataError, lpUpdateError)
 
 	ref := lp.title
 
