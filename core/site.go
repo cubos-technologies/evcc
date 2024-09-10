@@ -1892,7 +1892,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 		cpm.UL2 = int(voltages[1] * 1000)
 		cpm.UL3 = int(voltages[2] * 1000)
 	} else {
-		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, currents)
+		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, voltages)
 	}
 
 	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
