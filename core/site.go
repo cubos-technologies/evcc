@@ -548,7 +548,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 		if energyMeter, ok := meter.(api.MeterEnergy); err == nil && ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				mm.Energy = int(energy)
+				mm.Energy = int(energy * 10)
 				site.log.DEBUG.Printf("aux energy %s: %.0fW", ref, energy)
 				meterOnline = true
 			} else {
@@ -561,7 +561,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 		if energyMeter, ok := meter.(api.ExportEnergy); err == nil && ok {
 			exportEnergy, err := energyMeter.ExportEnergy()
 			if err == nil {
-				mm.EnergyNegative = int(exportEnergy)
+				mm.EnergyNegative = int(exportEnergy * 10)
 				site.log.DEBUG.Printf("aux export energy %s: %.0fW", ref, exportEnergy)
 				meterOnline = true
 			} else {
@@ -712,8 +712,8 @@ func (site *Site) updatePvMeters() {
 
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:          int(power),
-			Energy:         int(energy),
-			EnergyNegative: int(exportEnergy),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
 			IL1:            int(currents[0] * 1000),
 			IL2:            int(currents[1] * 1000),
 			IL3:            int(currents[2] * 1000),
@@ -820,8 +820,8 @@ func (site *Site) updateExtMeters() {
 
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:          int(power),
-			Energy:         int(energy),
-			EnergyNegative: int(exportEnergy),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
 			IL1:            int(currents[0] * 1000),
 			IL2:            int(currents[1] * 1000),
 			IL3:            int(currents[2] * 1000),
@@ -962,8 +962,8 @@ func (site *Site) updateBatteryMeters() error {
 
 		mmm[ref+"/record"] = batteryMeasurement{
 			Power:          int(power),
-			Energy:         int(energy),
-			EnergyNegative: int(exportEnergy),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
 			Soc:            int(batSoc),
 			Capacity:       int(capacity),
 			Controllable:   controllable,
@@ -1081,7 +1081,7 @@ func (site *Site) updateGridMeter() error {
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				mm.Energy = int(energy)
+				mm.Energy = int(energy * 10)
 				site.publish(keys.GridEnergy, energy)
 				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 				meterOnline = true
@@ -1096,7 +1096,7 @@ func (site *Site) updateGridMeter() error {
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				mm.EnergyNegative = int(exportEnergy)
+				mm.EnergyNegative = int(exportEnergy * 10)
 				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
 				meterOnline = true
 			} else {
