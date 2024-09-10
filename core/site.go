@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
@@ -529,21 +530,82 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 		return
 	}
 
-	mm := make(map[string]meterMeasurement, len(site.auxMeters))
+	var meterOnline bool
+	mmm := make(map[string]meterMeasurement, len(site.auxMeters))
 
 	for ref, meter := range site.auxMeters {
-		if power, err := meter.CurrentPower(); err == nil {
+		mm := meterMeasurement{}
+		// aux power
+		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
+		if err == nil {
 			site.auxPower += power
-			mm[ref] = meterMeasurement{Power: int(power)}
+			mm.Power = int(power)
 			site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
+			meterOnline = true
 		} else {
 			site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
+		// aux energy
+		if energyMeter, ok := meter.(api.MeterEnergy); err == nil && ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				mm.Energy = int(energy)
+				site.log.DEBUG.Printf("aux energy %s: %.0fW", ref, energy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		// aux currents
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			var currents [3]float64
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				mm.IL1 = int(currents[0] * 1000)
+				mm.IL2 = int(currents[1] * 1000)
+				mm.IL3 = int(currents[2] * 1000)
+				site.log.DEBUG.Printf("aux currents %s: %v", ref, currents)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		// aux voltages
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			var voltages [3]float64
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				mm.UL1 = int(voltages[0] * 1000)
+				mm.UL2 = int(voltages[1] * 1000)
+				mm.UL3 = int(voltages[2] * 1000)
+				site.log.DEBUG.Printf("aux voltages %s: %v", ref, voltages)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		if meterOnline {
+			mmm[ref+"/record"] = mm
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
+		}
+
 	}
 
 	site.log.DEBUG.Printf("aux power: %.0fW", site.auxPower)
 	site.publish(keys.AuxPower, site.auxPower)
-	site.publish(keys.Aux, mm)
+	site.publish(keys.Aux, mmm)
 }
 
 // updatePvMeters updates pv meters. All measurements are optional.
@@ -711,9 +773,45 @@ func (site *Site) updateExtMeters() {
 				meterOnline = false
 			}
 		}
+
+		// currents and voltages handling
+		var currents [3]float64
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %s currents: %v", ref, currents)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("pv %s currents: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+
+		var voltages [3]float64
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %s voltages: %v", ref, voltages)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("pv %s voltages: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		} else {
+			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
+		}
+
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:  int(power),
 			Energy: int(energy),
+			IL1:    int(currents[0] * 1000),
+			IL2:    int(currents[1] * 1000),
+			IL3:    int(currents[2] * 1000),
+			UL1:    int(voltages[0] * 1000),
+			UL2:    int(voltages[1] * 1000),
+			UL3:    int(voltages[2] * 1000),
 		}
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
@@ -984,15 +1082,11 @@ func (site *Site) updateGridMeter() error {
 
 		mm.Power = int(site.gridPower)
 
-		mmm := make(map[string]meterMeasurement)
-		mmm[ref+"/record"] = mm
-		site.publish(keys.Meters, mmm)
 		if meterOnline {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+			site.publish(keys.Meters, map[string]meterMeasurement{ref + "/record": mm})
 		} else {
 			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
-			// delete meterMeasurement from map to not publish incorrect values
-			delete(mmm, ref+"/record")
 		}
 	}
 
@@ -1703,13 +1797,13 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	var err error
 
-	err = lp.GetDataFromLoadpoint()
+	getDataError := lp.GetDataFromLoadpoint()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	if err == nil {
-		err = lp.Update(loadpointPower, site.sitePower)
-	}
+	lpUpdateError := lp.Update(loadpointPower, site.sitePower)
+	// set the err var to the first non-nil value
+	err = cmp.Or(getDataError, lpUpdateError)
 
 	ref := lp.title
 
@@ -1738,16 +1832,12 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 		cpm.IL1 = int(currents[0] * 1000)
 		cpm.IL2 = int(currents[1] * 1000)
 		cpm.IL3 = int(currents[2] * 1000)
-	} else {
-		lp.log.WARN.Printf("loadpoint %s: no or malformed current data: %v", ref, currents)
 	}
 	voltages := lp.chargeVoltages
 	if len(voltages) == 3 {
 		cpm.UL1 = int(voltages[0] * 1000)
 		cpm.UL2 = int(voltages[1] * 1000)
 		cpm.UL3 = int(voltages[2] * 1000)
-	} else {
-		lp.log.WARN.Printf("loadpoint %s: no or malformed voltage data: %v", ref, currents)
 	}
 
 	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
