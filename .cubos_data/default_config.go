@@ -1,16 +1,21 @@
 package cubosdata
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 
 	"github.com/evcc-io/evcc/api/globalconfig"
 	"github.com/evcc-io/evcc/provider/mqtt"
+	"github.com/evcc-io/evcc/util"
 )
 
 func CubosMqttProdConfig() (globalconfig.Mqtt, error) {
 	var err error
 	var caCert, clientCert, clientKey string
-	serial := "GW00000000"
+	serial := getGatewaySerial()
 
 	caCert, err = func(b []byte, err error) (string, error) {
 		return string(b), err
@@ -51,7 +56,7 @@ func CubosMqttProdConfig() (globalconfig.Mqtt, error) {
 func CubosMqttDevConfig() (globalconfig.Mqtt, error) {
 	var err error
 	var caCert, clientCert, clientKey string
-	serial := "GW00000000"
+	serial := getGatewaySerial()
 
 	caCert, err = func(b []byte, err error) (string, error) {
 		return string(b), err
@@ -98,4 +103,30 @@ func CubosMqttLocalConfig() (globalconfig.Mqtt, error) {
 		},
 		Topic: "Blackbox/" + serial,
 	}, nil
+}
+
+func getGatewaySerial() string {
+	var serial string
+	log := util.NewLogger("eeprom")
+
+	//TODO: rework
+	cmd := exec.Command("sh", "-c", `/app/eepromDumper /sys/bus/i2c/devices/2-0050/eeprom | grep -Eo 'caSerialNumber\s+GW[0-9]{8}' | sed 's/.*GW/GW/' | tr -d '\n'`)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	serial = strings.TrimSpace(stdout.String())
+	if err != nil || serial == "" {
+		log.WARN.Println("failed to get serial, using GW00000000")
+		return "GW00000000"
+	} else {
+		if matched, err := regexp.MatchString(`^GW\d{8}$`, serial); err != nil && matched {
+			log.INFO.Printf("got gateway serial %s", serial)
+		} else {
+			log.WARN.Printf("serial %s does not match regex, using GW00000000\n", serial)
+			return "GW00000000"
+		}
+	}
+	return serial
 }
