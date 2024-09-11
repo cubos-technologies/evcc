@@ -1848,7 +1848,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 
 	cpm := ChargepointMeasurement{
 		Power:     int(lp.chargePower),
-		Energy:    int(lp.sessionEnergy.totalKWh),
+		Energy:    int(lp.sessionEnergy.TotalWh()),
 		IL1:       0,
 		IL2:       0,
 		IL3:       0,
