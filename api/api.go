@@ -19,6 +19,11 @@ type MeterEnergy interface {
 	TotalEnergy() (float64, error)
 }
 
+// exportEnergy provides total import energy in kWh
+type ExportEnergy interface {
+	ExportEnergy() (float64, error)
+}
+
 // PhaseCurrents provides per-phase current A
 type PhaseCurrents interface {
 	Currents() (float64, float64, float64, error)
@@ -47,6 +52,10 @@ type BatteryCapacity interface {
 // ChargeState provides current charging status
 type ChargeState interface {
 	Status() (ChargeStatus, error)
+}
+
+type StatusReasoner interface {
+	StatusReason() (Reason, error)
 }
 
 // CurrentController provides settings charging maximum charging current

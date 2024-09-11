@@ -38,45 +38,64 @@ func NewMovingAverageFromConfig(other map[string]interface{}) (api.Meter, error)
 
 	meter, _ := NewConfigurable(mav.CurrentPower)
 
-	// decorate energy reading
+	// Decorate energy reading
 	var totalEnergy func() (float64, error)
-	if m, ok := m.(api.MeterEnergy); ok {
-		totalEnergy = m.TotalEnergy
+	if me, ok := m.(api.MeterEnergy); ok {
+		totalEnergy = me.TotalEnergy
 	}
 
-	// decorate battery reading
+	// Decorate export energy reading (if needed)
+	var exportEnergy func() (float64, error)
+	if ex, ok := m.(api.ExportEnergy); ok {
+		exportEnergy = ex.ExportEnergy
+	}
+
+	// Decorate battery state of charge reading
 	var batterySoc func() (float64, error)
-	if m, ok := m.(api.Battery); ok {
-		batterySoc = m.Soc
+	if b, ok := m.(api.Battery); ok {
+		batterySoc = b.Soc
 	}
 
-	// decorate currents reading
+	// Decorate currents reading
 	var currents func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhaseCurrents); ok {
-		currents = m.Currents
+	if c, ok := m.(api.PhaseCurrents); ok {
+		currents = c.Currents
 	}
 
-	// decorate voltages reading
+	// Decorate voltages reading
 	var voltages func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhaseVoltages); ok {
-		voltages = m.Voltages
+	if v, ok := m.(api.PhaseVoltages); ok {
+		voltages = v.Voltages
 	}
 
-	// decorate powers reading
+	// Decorate powers reading
 	var powers func() (float64, float64, float64, error)
-	if m, ok := m.(api.PhasePowers); ok {
-		powers = m.Powers
+	if p, ok := m.(api.PhasePowers); ok {
+		powers = p.Powers
 	}
 
-	return meter.Decorate(totalEnergy, currents, voltages, powers, batterySoc, cc.Meter.capacity.Decorator(), nil), nil
+	// Define setBatteryMode if needed
+	var setBatteryMode func(api.BatteryMode) error
+	if bc, ok := m.(api.BatteryController); ok {
+		setBatteryMode = bc.SetBatteryMode
+	} else {
+		setBatteryMode = nil
+	}
+
+	// Call the Decorate function with the proper arguments
+	res := meter.Decorate(totalEnergy, exportEnergy, currents, voltages, powers, batterySoc, nil, setBatteryMode)
+
+	return res, nil
 }
 
+// MovingAverage is a meter that calculates a moving average of the power readings.
 type MovingAverage struct {
 	decay         float64
 	value         *float64
 	currentPowerG func() (float64, error)
 }
 
+// CurrentPower implements the api.Meter interface, returning the moving average of the power.
 func (m *MovingAverage) CurrentPower() (float64, error) {
 	power, err := m.currentPowerG()
 	if err != nil {
@@ -86,9 +105,7 @@ func (m *MovingAverage) CurrentPower() (float64, error) {
 	return m.add(power), nil
 }
 
-// modeled after https://github.com/VividCortex/ewma
-
-// Add adds a value to the series and updates the moving average.
+// add adds a value to the series and updates the moving average.
 func (m *MovingAverage) add(value float64) float64 {
 	if m.value == nil {
 		m.value = &value

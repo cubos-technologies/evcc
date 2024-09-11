@@ -1,0 +1,182 @@
+variables:
+  # image tag with commit-hash
+  IMAGE_TAG_COMMIT:   $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  # image tag with branch-name or git-tag
+  IMAGE_TAG_REF_NAME: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  IMAGE_TAG_REF_SLUG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  # image tag with :latest
+  IMAGE_TAG_LATEST:   $CI_REGISTRY_IMAGE:latest
+
+  # image tag with branch-name or git-tag for pushing to harbor
+  IMAGE_TAG_HARBOR_REF_NAME: $HARBOR_HOST/$HARBOR_PROJECT:$CI_COMMIT_REF_NAME
+  # image tag with :latest for pushing to harbor
+  IMAGE_TAG_HARBOR_LATEST:   $HARBOR_HOST/$HARBOR_PROJECT:latest
+stages:
+  - build
+ # - test
+  - deploy
+
+
+# general launch rules
+workflow:
+  rules:
+    # if push to master/main
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    # if merge request to master/main
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_COMMIT_BRANCH'
+    # if push to dev
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
+    # if merge request to dev
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+    # if valid tag is pushed
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
+    # on manual trigger
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+
+# compile sources into docker image, tag with current commit.hash (short), and push to registry.
+build docker:
+  stage: build
+  tags:
+    - build
+  image: docker:24.0.7
+  services:
+    - name: docker:24.0.7-git # *-git is built on *-dind
+      alias: docker
+  variables:
+    # docker dind variables from https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#docker-in-docker-with-tls-disabled-in-the-docker-executor
+    DOCKER_TLS_CERTDIR: ""
+    # tell git to clone submodules
+    GIT_SUBMODULE_FORCE_HTTPS: "true"
+    GIT_SUBMODULE_STRATEGY: recursive
+  before_script:
+    # some debug logging
+    - docker info
+    - echo "date -> `date`"
+    - echo "building image"
+    - >
+      echo "
+       -> $IMAGE_TAG_COMMIT
+       -> $IMAGE_TAG_REF_NAME (slug $IMAGE_TAG_REF_SLUG)
+       -> $IMAGE_TAG_LATEST
+      "
+    # login to docker registry
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # try to pull docker image for this commit to skip build (allowed to fail). if pulling succeeds, we skip the build -> exit 0.
+    - docker pull "$IMAGE_TAG_COMMIT" && exit 0
+    # build and push docker image with tag = commit hash
+    - docker build . --pull -t "$IMAGE_TAG_COMMIT" --platform linux/arm/v7
+    - docker push "$IMAGE_TAG_COMMIT"
+    - docker logout $CI_REGISTRY
+
+# simulate running tests (no tests in here yet)
+#test:
+#  stage: test
+#  image: alpine:latest
+#  variables:
+#    # disable git clone
+#    GIT_STRATEGY: none
+#  script:
+#    - echo "Tests not yet implemented."
+#    - exit 0
+
+
+# deploy template. prefix '.' means that the job is not run by default.
+.deploy docker:
+  stage: deploy
+  tags:
+    - deploy
+  image: docker:24.0.7
+  services:
+    - name: docker:24.0.7-git # *-git is built on *-dind
+      alias: docker
+  variables:
+    # docker dind variables from https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#docker-in-docker-with-tls-disabled-in-the-docker-executor
+    DOCKER_TLS_CERTDIR: ""
+    # disable git clone
+    GIT_STRATEGY: none
+  # having before_script here means that child jobs will override this stage if they use before_script themself!
+
+# Re-tag image in registry with it's ref name (branch or valid tag).
+deploy to gitlab with ref:
+  extends: .deploy docker
+  rules:
+    # if valid tag is pushed
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
+      variables:
+        DEPLOY_USE_REF_NAME: "true"
+    # on manual trigger for version tags
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
+      variables:
+        DEPLOY_USE_REF_NAME: "true"
+    # for all other pipelines, run it with slug
+    - when: always
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull "$IMAGE_TAG_COMMIT"
+  script:
+    # set ref name (using variable in variable does not work in rules-stage)
+    - >
+      if [ $DEPLOY_USE_REF_NAME ]; then
+        DEPLOY_REF_TAG=$IMAGE_TAG_REF_NAME
+      else
+        DEPLOY_REF_TAG=$IMAGE_TAG_REF_SLUG
+      fi
+    - echo "deploying as $DEPLOY_REF_TAG"
+    # re-tag pulled image from before_script stage
+    - docker tag "$IMAGE_TAG_COMMIT" "$DEPLOY_REF_TAG"
+    - docker push "$DEPLOY_REF_TAG"
+    - docker logout $CI_REGISTRY
+
+# Re-tag image in registry with it's tag name
+deploy to harbor for tag:
+  extends: .deploy docker
+  rules:
+    # if valid tag is pushed
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
+    # on manual trigger for version tags
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
+  before_script:
+    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_URL
+    - docker pull "$IMAGE_TAG_COMMIT"
+  script:
+    - echo "deploying to harbor as $IMAGE_TAG_HARBOR_REF_NAME"
+    - docker tag "$IMAGE_TAG_COMMIT" "$IMAGE_TAG_HARBOR_REF_NAME"
+    - docker push "$IMAGE_TAG_HARBOR_REF_NAME"
+    - docker logout $HARBOR_URL 
+
+# Re-tag image in registry with :latest. ONLY ALLOWED TO RUN ON MASTER/MAIN (CI_DEFAULT_BRANCH), so that "image:latest" can act as a rolling release!
+deploy to gitlab as latest:
+  extends: .deploy docker
+  rules:
+    # if push to master/main
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    # on manual trigger for master/main
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    # job is not run for any other pipelines.
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull "$IMAGE_TAG_COMMIT"
+  script:
+    - docker tag "$IMAGE_TAG_COMMIT" "$IMAGE_TAG_LATEST"
+    - docker push "$IMAGE_TAG_LATEST"
+    - docker logout $CI_REGISTRY
+
+# Re-tag image in registry with :latest. ONLY ALLOWED TO RUN ON MASTER/MAIN (CI_DEFAULT_BRANCH), so that "image:latest" can act as a rolling release!
+deploy to harbor as latest:
+  extends: .deploy docker
+  rules:
+    # if push to master/main
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    # on manual trigger for master/main
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    # job is not run for any other pipelines.
+  before_script:
+    - docker login -u $HARBOR_USERNAME -p $HARBOR_PASSWORD $HARBOR_URL
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull "$IMAGE_TAG_COMMIT"
+  script:
+    - docker tag "$IMAGE_TAG_COMMIT" "$IMAGE_TAG_HARBOR_LATEST"
+    - docker push "$IMAGE_TAG_HARBOR_LATEST"
+    - docker logout $HARBOR_URL

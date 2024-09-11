@@ -21,11 +21,13 @@ const (
 	ChargerFeature        = "chargerFeature"        // charger feature
 	ChargerPhysicalPhases = "chargerPhysicalPhases" // charger phases
 	ChargerPhases1p3p     = "chargerPhases1p3p"     // phase switcher (1p3p chargers)
+	ChargerStatusReason   = "chargerStatusReason"   // either awaiting authorization or disconnect required
 
 	// loadpoint status
 	Enabled   = "enabled"   // loadpoint enabled
 	Connected = "connected" // connected
 	Charging  = "charging"  // charging
+	Error     = "error"     // loadpoint error
 
 	// smart charging
 	SmartCostActive    = "smartCostActive"    // smart cost active

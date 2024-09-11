@@ -8,6 +8,7 @@ const (
 	GreenShareLoadpoints  = "greenShareLoadpoints"
 	GridConfigured        = "gridConfigured"
 	GridCurrents          = "gridCurrents"
+	GridVoltages          = "gridVoltages"
 	GridEnergy            = "gridEnergy"
 	GridPower             = "gridPower"
 	GridPowers            = "gridPowers"
