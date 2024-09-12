@@ -254,7 +254,12 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		}
 	})
 
-	site.loadpointData = LoadpointData{newDataforLoadpoint: make(map[*Loadpoint]bool), powerForLoadpointCalc: make(map[*Loadpoint]float64), powerForLoadpointSet: make(map[*Loadpoint]float64), prevError: 0.0, freePowerPID: 0.0, circuitMinPower: make(map[api.Circuit]float64)}
+	site.loadpointData = LoadpointData{newDataforLoadpoint: make(map[*Loadpoint]bool),
+		powerForLoadpointCalc: make(map[*Loadpoint]float64),
+		powerForLoadpointSet:  make(map[*Loadpoint]float64),
+		prevError:             0.0,
+		freePowerPID:          0.0,
+		circuitMinPower:       make(map[api.Circuit]float64)}
 	site.calcblock = false
 	site.blockMeterUpdate = false
 
@@ -728,11 +733,6 @@ func (site *Site) updateMeters() error {
 	return g.Wait()
 }
 
-// sitePower returns
-//   - the net power exported by the site minus a residual margin
-//     (negative values mean grid: export, battery: charging
-//   - if battery buffer can be used for charging
-
 // greenShare returns
 //   - the current green share, calculated for the part of the consumption between powerFrom and powerTo
 //     the consumption below powerFrom will get the available green power first
@@ -827,7 +827,6 @@ func (site *Site) updateEnergyMeters() error {
  */
 func (site *Site) CalculateValues() {
 	site.calcblock = true
-	//site.updateEnergyMeters()
 	var maxPowerLoadpointsPrio [maxPrio]float64   //Variable for all max Powers from active Loadpoints in each Priority
 	var minPowerLoadpointsPrio [maxPrio]float64   //Variable for all min Powers from active Loadpoints in each Priority
 	var countLoadpointsPrio [maxPrio]int          //Variable wich counts active Loadpoints in each Priority
@@ -838,10 +837,9 @@ func (site *Site) CalculateValues() {
 	sumMinPower := 0.0                            //Variable to sum all min Power needed from Loadpoints and homePower
 	maxPowerLoadpoints := 0.0                     //Variable to get a Value of the max Power needed for all Loadpoints
 	gridPower := site.gridPower                   //Variable for Gridpower
-	sitePower := 0.0
 	site.mux.Lock()
 	pvPower := max(0, site.pvPower)   //temporary Variable for PVPower
-	batteryPower := site.batteryPower //temporary Variable for momentary Battery Power (negativ = Battery Charging, positiv = Battery Discharging)
+	batteryPower := site.batteryPower //temporary Variable for momentary Battery Power (negative = Battery Charging, positive = Battery Discharging)
 	site.mux.Unlock()
 	sumFlexPower := 0.0                                  //Variable over all flexible Power of all Loadpoints
 	sumSetPower := 0.0                                   //Variable to get a Value of the Power set to all Loadpoints
@@ -866,9 +864,7 @@ func (site *Site) CalculateValues() {
 	batteryGridChargeActive := site.batteryGridChargeActive(rate)
 	site.publish(keys.BatteryGridChargeActive, batteryGridChargeActive)
 
-	batteryMode := site.requiredBatteryMode(batteryGridChargeActive, rate)
-
-	if batteryMode != api.BatteryUnknown {
+	if batteryMode := site.requiredBatteryMode(batteryGridChargeActive, rate); batteryMode != api.BatteryUnknown {
 		if err := site.applyBatteryMode(batteryMode); err == nil {
 			site.SetBatteryMode(batteryMode)
 		} else {
@@ -911,7 +907,6 @@ func (site *Site) CalculateValues() {
 
 	// Set Power for Loadpoints/ Distribution of available Power to MinPV and PV
 	freePower := -site.loadpointData.freePowerPID
-	sitePower = max(pvPower-sumMinPower, 0)
 	site.publish("freePower", freePower)
 
 	// Power calculation without Circuit
@@ -919,11 +914,7 @@ func (site *Site) CalculateValues() {
 
 	for _, lp := range site.loadpoints {
 		site.loadpointData.powerForLoadpointCalc[lp] = powerForLoadpointTmp[lp]
-		if lp.GetMode() != api.ModePV {
-			sitePower -= powerForLoadpointTmp[lp]
-		}
 	}
-	site.sitePower = max(sitePower, 0)
 	// Circuit check of distributed Power
 	if site.circuit != nil {
 		site.checkCircuit(site.circuit, powerForLoadpointTmp)
@@ -1413,7 +1404,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	lp.Update(loadpointPower, site.sitePower)
+	lp.Update(loadpointPower, site.gridPower)
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread

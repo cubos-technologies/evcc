@@ -1281,16 +1281,9 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, freePower, sitePower floa
 		// if we did scale, adjust the effective current to the new phase count
 		effectiveCurrent /= 3.0
 	}
-	deltaCurrent := powerToCurrent(-freePower, activePhases)
-	targetCurrent := max(-deltaCurrent, 0)
+	targetCurrent := max(-powerToCurrent(-freePower, activePhases), 0)
 
-	// in MinPV mode or under special conditions return at least minCurrent
-	/*if battery := batteryStart || batteryBuffered && lp.charging(); (mode == api.ModeMinPV || battery) && targetCurrent < minCurrent {
-		lp.log.DEBUG.Printf("pv charge current: min %.3gA > %.3gA (%.0fW @ %dp, battery: %t)", minCurrent, targetCurrent, sitePower, activePhases, battery)
-		return minCurrent
-	}*/
-
-	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA + %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, deltaCurrent, freePower, activePhases)
+	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
 
 	if mode == api.ModePV && lp.enabled && targetCurrent < minCurrent {
 		projectedSitePower := sitePower
