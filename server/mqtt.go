@@ -36,7 +36,8 @@ func NewMQTT(root string, site site.API, shutdown func(), valueChan chan<- util.
 	}
 	m.publisher = m.publishString
 
-	err := m.Handler.Cleanup(m.root, true)
+	//err := m.Handler.Cleanup(m.root, true)
+	var err error
 	if err == nil {
 		err = m.Listen(site, shutdown, valueChan)
 	}
