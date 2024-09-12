@@ -263,7 +263,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site, func() {
 			log.INFO.Println("evcc was stopped by user. OS should restart the service. Or restart manually.")
 			once.Do(func() { close(stopC) }) // signal loop to end
-		})
+		}, valueChan)
 		if err == nil {
 			go mqtt.Run(site, pipe.NewDropper(append(ignoreMqtt, ignoreEmpty)...).Pipe(tee.Attach()))
 		}

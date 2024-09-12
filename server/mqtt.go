@@ -11,6 +11,7 @@ import (
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/core"
+	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/core/vehicle"
@@ -27,7 +28,7 @@ type MQTT struct {
 }
 
 // NewMQTT creates MQTT server
-func NewMQTT(root string, site site.API, shutdown func()) (*MQTT, error) {
+func NewMQTT(root string, site site.API, shutdown func(), valueChan chan<- util.Param) (*MQTT, error) {
 	m := &MQTT{
 		log:     util.NewLogger("mqtt"),
 		Handler: mqtt.Instance,
@@ -37,7 +38,7 @@ func NewMQTT(root string, site site.API, shutdown func()) (*MQTT, error) {
 
 	err := m.Handler.Cleanup(m.root, true)
 	if err == nil {
-		err = m.Listen(site, shutdown)
+		err = m.Listen(site, shutdown, valueChan)
 	}
 	if err != nil {
 		err = fmt.Errorf("mqtt: %w", err)
@@ -149,7 +150,7 @@ func (m *MQTT) publish(topic string, retained bool, payload interface{}) {
 	m.publishComplex(topic, retained, payload)
 }
 
-func (m *MQTT) Listen(site site.API, shutdown func()) error {
+func (m *MQTT) Listen(site site.API, shutdown func(), valueChan chan<- util.Param) error {
 	if err := m.listenSiteSetters(m.root+"/site", site); err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func (m *MQTT) Listen(site site.API, shutdown func()) error {
 		}
 	}
 
-	if err := m.listenConfig(m.root, site); err != nil {
+	if err := m.listenConfig(m.root, site, valueChan); err != nil {
 		return err
 	}
 
@@ -188,7 +189,8 @@ func (m *MQTT) Listen(site site.API, shutdown func()) error {
 	return nil
 }
 
-func (m *MQTT) listenConfig(topic string, site site.API) error {
+// "interval":           {"POST", "/interval/{value:[0-9.]+}", settingsSetDurationHandler(keys.Interval)},
+func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.Param) error {
 	for _, s := range []setterWithTopic{
 		{"/energymeter/+/config", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
@@ -241,8 +243,16 @@ func (m *MQTT) listenConfig(topic string, site site.API) error {
 			}
 			return nil
 		}},
-		{"/config", func(payload string, full_topic string) error {
-			//TODO
+		{"/config/mqtt", func(payload string, full_topic string) error {
+			if len(payload) != 0 {
+				settingsSetMQTTConfig(payload, valueChan)
+			} else {
+				settingsDeleteMQTTConfig(valueChan)
+			}
+			return nil
+		}},
+		{"/config/interval", func(payload string, full_topic string) error {
+			settingsSetDurationHandlerMQTT(payload, keys.Interval)
 			return nil
 		}},
 		{"/chargepoint/+/config", func(payload string, full_topic string) error {
