@@ -5,17 +5,23 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 
 	"github.com/evcc-io/evcc/api/globalconfig"
 	"github.com/evcc-io/evcc/provider/mqtt"
 	"github.com/evcc-io/evcc/util"
 )
 
-func CubosMqttProdConfig() (globalconfig.Mqtt, error) {
+func CubosMqttConfig() (globalconfig.Mqtt, error) {
+	log := util.NewLogger("cubos-config")
+	//return CubosMqttDevConfig(log)
+	return CubosMqttProdConfig(log)
+}
+
+func CubosMqttProdConfig(log *util.Logger) (globalconfig.Mqtt, error) {
 	var err error
 	var caCert, clientCert, clientKey string
 	serial := getGatewaySerial()
+	log.INFO.Printf("using serial %s", serial)
 
 	caCert, err = func(b []byte, err error) (string, error) {
 		return string(b), err
@@ -53,10 +59,11 @@ func CubosMqttProdConfig() (globalconfig.Mqtt, error) {
 	}, nil
 }
 
-func CubosMqttDevConfig() (globalconfig.Mqtt, error) {
+func CubosMqttDevConfig(log *util.Logger) (globalconfig.Mqtt, error) {
 	var err error
 	var caCert, clientCert, clientKey string
 	serial := getGatewaySerial()
+	log.INFO.Printf("using serial %s", serial)
 
 	caCert, err = func(b []byte, err error) (string, error) {
 		return string(b), err
@@ -107,26 +114,58 @@ func CubosMqttLocalConfig() (globalconfig.Mqtt, error) {
 
 func getGatewaySerial() string {
 	var serial string
+	defaultSerial := "GW00000000"
+	serialPattern := `^GW\d{8}$`
 	log := util.NewLogger("eeprom")
 
-	//TODO: rework
-	cmd := exec.Command("sh", "-c", `/app/eepromDumper /sys/bus/i2c/devices/2-0050/eeprom | grep -Eo 'caSerialNumber\s+GW[0-9]{8}' | sed 's/.*GW/GW/' | tr -d '\n'`)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	serial = strings.TrimSpace(stdout.String())
-	if err != nil || serial == "" {
-		log.WARN.Println("failed to get serial, using GW00000000")
-		return "GW00000000"
-	} else {
-		if matched, err := regexp.MatchString(`^GW\d{8}$`, serial); err != nil && matched {
-			log.INFO.Printf("got gateway serial %s", serial)
-		} else {
-			log.WARN.Printf("serial %s does not match regex, using GW00000000\n", serial)
-			return "GW00000000"
-		}
+	var eepromOut bytes.Buffer
+	eepromCmd := exec.Command("/app/eepromDumper", "/sys/bus/i2c/devices/2-0050/eeprom")
+	eepromCmd.Stdout = &eepromOut
+	err := eepromCmd.Run()
+	if err != nil {
+		log.WARN.Printf("failed to run serial dumper: %w", err)
+		return defaultSerial
 	}
+
+	var grepOut bytes.Buffer
+	grepCmd := exec.Command("grep", "-Eo", "caSerialNumber\\s+GW[0-9]{8}")
+	grepCmd.Stdin = &eepromOut
+	grepCmd.Stdout = &grepOut
+	err = grepCmd.Run()
+	if err != nil {
+		log.WARN.Printf("failed to run grep: %w", err)
+		return defaultSerial
+	}
+
+	var sedOut bytes.Buffer
+	sedCmd := exec.Command("sed", "s/.*GW/GW/")
+	sedCmd.Stdin = &grepOut
+	sedCmd.Stdout = &sedOut
+	err = sedCmd.Run()
+	if err != nil {
+		log.WARN.Printf("failed to run sed: %w", err)
+		return defaultSerial
+	}
+
+	var trOut bytes.Buffer
+	trCmd := exec.Command("tr", "-d", "\n")
+	trCmd.Stdin = &sedOut
+	trCmd.Stdout = &trOut
+	err = trCmd.Run()
+	if err != nil {
+		log.WARN.Printf("failed to run tr: %w", err)
+		return defaultSerial
+	}
+
+	re, err := regexp.Compile(serialPattern)
+	if err != nil {
+		log.ERROR.Printf("failed to compile regex: %w")
+		return defaultSerial
+	}
+	if !re.MatchString(serial) {
+		log.WARN.Printf("serial %s does not match regex", serial)
+		return defaultSerial
+	}
+
 	return serial
 }

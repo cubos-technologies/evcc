@@ -544,7 +544,7 @@ func configureDatabase(conf globalconfig.DB) error {
 		if err := auth.New().SetAdminPassword("a"); err != nil {
 			return err
 		}
-		mqttConfig, err := cubosdata.CubosMqttProdConfig()
+		mqttConfig, err := cubosdata.CubosMqttConfig()
 		if err != nil {
 			return err
 		}
