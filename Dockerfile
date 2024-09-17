@@ -110,7 +110,7 @@ HEALTHCHECK --interval=60s --start-period=60s --timeout=30s --retries=3 CMD [ "e
 COPY --from=eeprom-builder /eepromTools/eepromDumper ./
 RUN chmod +x eepromDumper
 
-COPY /.cubos_data ./
+COPY /.cubos_data ./.cubos_data/
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 CMD [ "evcc" ]
