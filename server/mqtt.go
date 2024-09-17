@@ -27,6 +27,11 @@ type MQTT struct {
 	publisher func(topic string, retained bool, payload string)
 }
 
+type Userinfo struct {
+	RFIDTag         string `json:"rfid_tag"`
+	ChargingProfile int    `json:"charging_profile"`
+}
+
 // NewMQTT creates MQTT server
 func NewMQTT(root string, site site.API, shutdown func(), valueChan chan<- util.Param) (*MQTT, error) {
 	m := &MQTT{
@@ -217,14 +222,43 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 		}},
 		{"/users", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
-			var req2 map[string]map[string]any //want to change to map[string]map[string]any
+			var req2 map[string]map[string]any
 			var err error
-			json.NewDecoder(msg).Decode(&req2)
-			for cubos_id, req := range req2 {
-				if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
-					errorTopic := full_topic[:len(full_topic)-3] + "error"
-					m.publish(errorTopic, false, err.Error())
-					//return err
+			if err = json.NewDecoder(msg).Decode(&req2); err == nil {
+				for cubos_id, req := range req2 {
+					if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
+						errorTopic := full_topic[:len(full_topic)-3] + "error"
+						m.publish(errorTopic, false, err.Error())
+						//return err
+					}
+				}
+			} else { //legacy
+				var req3 []Userinfo
+				err = json.Unmarshal([]byte(payload), &req3)
+				if err == nil {
+					for _, req := range req3 {
+						mapvar := make(map[string]any)
+						var modestring = "minpv"
+						switch req.ChargingProfile {
+						case 0:
+							modestring = "now"
+						case 1:
+							modestring = "minpv"
+						}
+						var indentifiers []string
+						indentifiers = append(indentifiers, req.RFIDTag)
+						mapvar["title"] = req.RFIDTag
+						mapvar["template"] = "offline"
+						mapvar["identifiers"] = indentifiers
+						mapvar["mode"] = modestring
+
+						if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config/set"); err != nil {
+							errorTopic := full_topic[:len(full_topic)-3] + "error"
+							m.publish(errorTopic, false, err.Error())
+							//return err
+						}
+
+					}
 				}
 			}
 			return err
