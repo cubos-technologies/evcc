@@ -15,6 +15,7 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	cubosdata "github.com/evcc-io/evcc/.cubos_data"
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/api/globalconfig"
 	"github.com/evcc-io/evcc/charger"
@@ -36,6 +37,7 @@ import (
 	"github.com/evcc-io/evcc/server/oauth2redirect"
 	"github.com/evcc-io/evcc/tariff"
 	"github.com/evcc-io/evcc/util"
+	"github.com/evcc-io/evcc/util/auth"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/locale"
 	"github.com/evcc-io/evcc/util/machine"
@@ -515,8 +517,15 @@ func configureDatabase(conf globalconfig.DB) error {
 		return errors.New("database dsn not configured")
 	}
 
+	var newDb = false
+
 	if err := db.NewInstance(conf.Type, conf.Dsn); err != nil {
-		return err
+		var newDbErr *db.NewDbError
+		if errors.As(err, &newDbErr) {
+			newDb = true
+		} else {
+			return err
+		}
 	}
 
 	if err := settings.Init(); err != nil {
@@ -528,6 +537,22 @@ func configureDatabase(conf globalconfig.DB) error {
 			log.ERROR.Println("cannot save settings:", err)
 		}
 	}
+
+	if newDb {
+		// populate db with defaults
+		log.INFO.Println("new db, inserting cubos default values...")
+		if err := auth.New().SetAdminPassword("Dromedar!230"); err != nil {
+			return err
+		}
+		mqttConfig, err := cubosdata.CubosMqttConfig()
+		if err != nil {
+			return err
+		}
+		if err := settings.SetJson("mqtt", mqttConfig); err != nil {
+			return err
+		}
+	}
+	persistSettings()
 
 	// persist unsaved settings on shutdown
 	shutdown.Register(persistSettings)
@@ -597,7 +622,7 @@ func configureMqtt(conf *globalconfig.Mqtt) error {
 
 	log := util.NewLogger("mqtt")
 
-	instance, err := mqtt.RegisteredClient(log, conf.Broker, conf.User, conf.Password, conf.ClientID, 1, conf.Insecure, func(options *paho.ClientOptions) {
+	instance, err := mqtt.RegisteredClient(log, conf.Broker, conf.User, conf.Password, conf.ClientID, 1, conf.Insecure, conf.CaCert, conf.ClientCert, conf.ClientKey, func(options *paho.ClientOptions) {
 		topic := fmt.Sprintf("%s/status", strings.Trim(conf.Topic, "/"))
 		options.SetWill(topic, "offline", 1, true)
 

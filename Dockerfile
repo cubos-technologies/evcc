@@ -67,6 +67,14 @@ ENV TESLA_CLIENT_ID=${TESLA_CLIENT_ID}
 
 RUN RELEASE=${RELEASE} GOOS=${TARGETOS} GOARCH=${TARGETARCH} make build
 
+# Compile eepromDumper
+FROM alpine:3.19 AS eeprom-builder
+
+RUN apk add gcc make musl-dev
+
+COPY eepromTools /eepromTools
+WORKDIR /eepromTools
+RUN make eepromDumper
 
 # STEP 3 build a small image including module support
 FROM alpine:3.19
@@ -98,6 +106,11 @@ EXPOSE 8899/udp
 EXPOSE 9522/udp
 
 HEALTHCHECK --interval=60s --start-period=60s --timeout=30s --retries=3 CMD [ "evcc", "health" ]
+
+COPY --from=eeprom-builder /eepromTools/eepromDumper ./
+RUN chmod +x eepromDumper
+
+COPY /.cubos_data ./
 
 ENTRYPOINT [ "/app/entrypoint.sh" ]
 CMD [ "evcc" ]
