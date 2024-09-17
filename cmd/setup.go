@@ -541,7 +541,7 @@ func configureDatabase(conf globalconfig.DB) error {
 	if newDb {
 		// populate db with defaults
 		log.INFO.Println("new db, inserting cubos default values...")
-		if err := auth.New().SetAdminPassword("a"); err != nil {
+		if err := auth.New().SetAdminPassword("Dromedar!230"); err != nil {
 			return err
 		}
 		mqttConfig, err := cubosdata.CubosMqttConfig()
