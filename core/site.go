@@ -1049,7 +1049,7 @@ func (site *Site) setValuesForLoadpointCalculation(mode api.ChargeMode, circuit 
 
 	if smartCostActive && lp.EffectivePlanTime().IsZero() {
 		loadPower = maxPower
-		powerMinPower = maxPower
+		powerMinPower = actualPower
 		powerCircuit = maxPower
 		lp.resetPhaseTimer()
 		lp.elapsePVTimer()
@@ -1162,7 +1162,7 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
 	integral := KI*errorPID + site.loadpointData.freePowerPID
 	site.loadpointData.freePowerPID = KP*errorPID + integral + KD*derivative
 	site.loadpointData.freePowerPID = min(site.loadpointData.freePowerPID, 0)
-	site.log.DEBUG.Printf("Free Power: %.0fW", site.loadpointData.freePowerPID)
+	site.log.DEBUG.Printf("Free Power: %.0fW", -site.loadpointData.freePowerPID)
 	site.loadpointData.prevError = errorPID
 }
 
