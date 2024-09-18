@@ -14,6 +14,7 @@ import (
 
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/provider/mqtt"
 	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server"
 	"github.com/evcc-io/evcc/server/updater"
@@ -210,8 +211,6 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// TODO
 	valueChan <- util.Param{Key: keys.Sponsor, Val: sponsor.Status()}
 
-	// setup mqtt publisher
-
 	// announce on mDNS
 	if err == nil && strings.HasSuffix(conf.Network.Host, ".local") {
 		err = configureMDNS(conf.Network)
@@ -258,6 +257,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// allow web access for vehicles
 	configureAuth(conf.Network, config.Instances(config.Vehicles().Devices()), httpd.Router(), valueChan)
 
+	// setup mqtt publisher
 	if err == nil && conf.Mqtt.Broker != "" {
 		var mqtt *server.MQTT
 		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site, func() {
@@ -301,7 +301,11 @@ func runRoot(cmd *cobra.Command, args []string) {
 		// TODO stop reboot loop if user updates config (or show countdown in UI)
 		log.FATAL.Println(err)
 		log.FATAL.Printf("will attempt restart in: %v", rebootDelay)
-
+		// Send info about failed start on MQTT
+		if conf.Mqtt.Broker != "" && mqtt.Instance.Client.IsConnected() {
+			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/status", conf.Mqtt.Topic), 1, true, "offline")
+			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/error", conf.Mqtt.Topic), 1, true, err.Error())
+		}
 		go func() {
 			<-time.After(rebootDelay)
 			once.Do(func() { close(stopC) }) // signal loop to end

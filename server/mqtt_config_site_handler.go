@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/templates"
@@ -12,6 +13,7 @@ type siteRefs struct {
 	PV      *[]string
 	Battery *[]string
 	Aux     *[]string
+	Ext     *[]string
 }
 
 func MQTTupdateRef(usage string, class templates.Class, name string, delete bool, site site.API) error {
@@ -70,6 +72,19 @@ func MQTTupdateRef(usage string, class templates.Class, name string, delete bool
 			} else {
 				*newSiteRef.Aux = append(*newSiteRef.Aux, name)
 			}
+		case "ext":
+			newSiteRef.Ext = new([]string)
+			*newSiteRef.Ext = site.GetExtMeterRefs()
+			if delete {
+				for index, element := range *newSiteRef.Ext {
+					if element == name {
+						slice := *newSiteRef.Ext
+						*newSiteRef.Ext = append(slice[:index], slice[(index+1):]...)
+					}
+				}
+			} else {
+				*newSiteRef.Ext = append(*newSiteRef.Ext, name)
+			}
 		}
 
 		if err := MQTTupdateSiteHandler(newSiteRef, site); err != nil {
@@ -116,6 +131,14 @@ func MQTTupdateSiteHandler(payload siteRefs, site site.API) error {
 		site.SetBatteryMeterRefs(*payload.Battery)
 		setConfigDirty()
 	}
+	if payload.Ext != nil {
+		if err := MQTTvalidateRefs(*payload.Ext); err != nil {
+			return err
+		}
+
+		site.SetExtMeterRefs(*payload.Ext)
+		setConfigDirty()
+	}
 	return nil
 }
 
@@ -126,4 +149,34 @@ func MQTTvalidateRefs(refs []string) error {
 		}
 	}
 	return nil
+}
+
+func appendMeterToSite(meter api.Meter, usage string, ref string, site site.API) {
+	switch usage {
+	case "pv":
+		site.AppendPVMeter(meter, ref)
+	case "grid":
+		site.AppendGridMeter(meter, ref)
+	case "battery":
+		site.AppendBatteryMeter(meter, ref)
+	case "aux":
+		site.AppendAuxMeter(meter, ref)
+	case "ext":
+		site.AppendExtMeter(meter, ref)
+	}
+}
+
+func removeMeterfromSite(usage string, ref string, site site.API) {
+	switch usage {
+	case "pv":
+		site.DeletePVMeter(ref)
+	case "grid":
+		site.DeleteGridMeter(ref)
+	case "battery":
+		site.DeleteBatteryMeter(ref)
+	case "aux":
+		site.DeleteAuxMeter(ref)
+	case "ext":
+		site.DeleteExtMeter(ref)
+	}
 }

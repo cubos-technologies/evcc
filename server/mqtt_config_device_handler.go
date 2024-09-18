@@ -7,6 +7,7 @@ import (
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/charger"
+	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/circuit"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/meter"
@@ -60,22 +61,30 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 				"charger": charger,
 			}
 		}
+		if _, found := cc.Other["title"].(string); !found {
+			cc.Other["title"] = cc.Cubos_id
+		}
 		if inrec, err = json.Marshal(cc.Other); err != nil {
 			return err
 		}
 
-		if err = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+		var instance any
+		if err, instance = MQTTnewLoadpointHandler(string(inrec)); err != nil {
 			MQTTdeleteDeviceHandler(conf.ID, site, templates.Charger)
 			return err
 		}
+		site.AppendLoadpoint(instance.(*core.Loadpoint))
 
 	case templates.Meter:
-		if conf, err = newDevice(class, req, meter.NewFromConfig, config.Meters()); err != nil {
+		var instance any
+		if conf, err, instance = newDeviceReturnInstance(class, req, meter.NewFromConfig, config.Meters()); err != nil {
 			return err
 		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(conf.ID), false, site)
+			appendMeterToSite(instance.(api.Meter), usage, req["cubos_id"].(string), site) //TODO Conversion Handling???
 		}
+
 	case templates.Vehicle:
 		if _, err = newDevice(class, req, vehicle.NewFromConfig, config.Vehicles()); err != nil {
 			return err
@@ -163,18 +172,43 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 		if err = updateDevice(id, class, inInterface, charger.NewFromConfig, config.Chargers()); err != nil {
 			return err
 		}
+		charger := config.NameForID(id)
+		if cc.Other != nil {
+			cc.Other["charger"] = charger
+		} else {
+			cc.Other = map[string]interface{}{
+				"charger": charger,
+			}
+		}
+		if _, found := cc.Other["title"].(string); !found {
+			cc.Other["title"] = cc.Cubos_id
+		}
+		if inrec, err = json.Marshal(cc.Other); err != nil {
+			return err
+		}
+		MQTTdeleteLoadpointHandler(id)
+		site.RemoveLoadpoint(charger)
+		var instance any
+		if err, instance = MQTTnewLoadpointHandler(string(inrec)); err != nil {
+			MQTTdeleteDeviceHandler(id, site, templates.Charger)
+			return err
+		}
+		site.AppendLoadpoint(instance.(*core.Loadpoint))
 
 	case templates.Meter: //battery like meter
 		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
 			if usage, found := res["config"].(map[string]interface{})["usage"].(string); found {
 				MQTTupdateRef(usage, class, config.NameForID(id), true, site)
+				removeMeterfromSite(usage, req["cubos_id"].(string), site)
 			}
 		}
-		if err = updateDevice(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
+		var instance any
+		if err, instance = updateDeviceReturnInstance(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
 			return err
 		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(id), false, site)
+			appendMeterToSite(instance.(api.Meter), usage, req["cubos_id"].(string), site)
 		}
 
 	case templates.Vehicle:
@@ -201,9 +235,11 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 		if err = deleteDevice(id, config.Chargers()); err != nil {
 			return err
 		}
-		if err = MQTTdeleteLoadpointHandler(id); err != nil {
+		var charger string
+		if err, charger = MQTTdeleteLoadpointHandler(id); err != nil {
 			return err
 		}
+		site.RemoveLoadpoint(charger)
 
 	case templates.Meter:
 		conf, err := deviceConfig(templates.Meter, id, config.Meters())
@@ -218,6 +254,7 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 				if err = MQTTupdateRef(usage, class, config.NameForID(id), true, site); err != nil {
 					return err
 				}
+				removeMeterfromSite(usage, configuration["cubos_id"].(string), site)
 			}
 		}
 	case templates.Vehicle:
@@ -231,4 +268,32 @@ func MQTTdeleteDeviceHandler(id int, site site.API, class templates.Class) error
 	}
 	setConfigDirty()
 	return nil
+}
+
+func newDeviceReturnInstance[T any](class templates.Class, req map[string]any, newFromConf func(string, map[string]any) (T, error), h config.Handler[T]) (*config.Config, error, T) {
+	instance, err := newFromConf(typeTemplate, req)
+	if err != nil {
+		return nil, err, *new(T)
+	}
+
+	conf, err := config.AddConfig(class, typeTemplate, req)
+	if err != nil {
+		return nil, err, *new(T)
+	}
+
+	return &conf, h.Add(config.NewConfigurableDevice[T](conf, instance)), instance
+}
+
+func updateDeviceReturnInstance[T any](id int, class templates.Class, conf map[string]any, newFromConf func(string, map[string]any) (T, error), h config.Handler[T]) (error, T) {
+	dev, instance, merged, err := deviceInstanceFromMergedConfig(id, class, conf, newFromConf, h)
+	if err != nil {
+		return err, *new(T)
+	}
+
+	configurable, ok := dev.(config.ConfigurableDevice[T])
+	if !ok {
+		return errors.New("not configurable"), *new(T)
+	}
+
+	return configurable.Update(merged, instance), instance
 }

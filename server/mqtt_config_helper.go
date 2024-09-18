@@ -40,7 +40,7 @@ func CubosIdToId(cubosId string, class templates.Class) (int, error) {
 
 	for _, res2 := range res {
 		if res3, found := res2["config"].(map[string]any); found {
-			if cubos_id_, found2 := res3["cubosId"].(string); found2 {
+			if cubos_id_, found2 := res3["cubos_id"].(string); found2 {
 				if cubos_id_ == cubosId {
 					id = res2["id"].(int)
 					return id, nil
