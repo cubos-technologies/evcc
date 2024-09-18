@@ -860,6 +860,19 @@ func (mr *MockCircuitMockRecorder) GetTitle() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTitle", reflect.TypeOf((*MockCircuit)(nil).GetTitle))
 }
 
+func (m *MockCircuit) GetChilds() []Circuit {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChilds")
+	ret0, _ := ret[0].([]Circuit)
+	return ret0
+}
+
+// GetTitle indicates an expected call of GetTitle.
+func (mr *MockCircuitMockRecorder) GetChilds() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChilds", reflect.TypeOf((*MockCircuit)(nil).GetChilds))
+}
+
 // HasMeter mocks base method.
 func (m *MockCircuit) HasMeter() bool {
 	m.ctrl.T.Helper()
