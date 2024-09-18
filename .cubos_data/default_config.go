@@ -133,7 +133,7 @@ func getGatewaySerial() string {
 		return defaultSerial
 	}
 	match := re.FindStringSubmatch(string(eepromOut))
-	if len(match) < 1 {
+	if len(match) == 0 {
 		log.WARN.Printf("no regex match for serial %v", match)
 		return defaultSerial
 	}
