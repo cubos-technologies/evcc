@@ -222,7 +222,7 @@ func (site *Site) Loadpoints() []loadpoint.API {
 }
 
 // Loadpoints returns the loadpoints as api interfaces
-func (site *Site) AppendLoadpoint(ref string, instance any) {
+func (site *Site) AppendLoadpoint(instance any) {
 	site.Lock()
 	defer site.Unlock()
 	lp := instance.(*Loadpoint)
