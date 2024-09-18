@@ -970,7 +970,19 @@ func (site *Site) GetDataFromAllLoadpointsForCalculation(totalChargePower, sumMi
 			site.CheckCircuitList(circuit)
 			chargerMode := lp.GetMode()
 			prio := lp.EffectivePriority()
-			powerForLoadpointTmp[lp] = site.setValuesForLoadpointCalculation(chargerMode, circuit, lp, countLoadpointsPrio, maxPowerLoadpointsPrio, minPowerPVLoadpointsPrio, minPowerLoadpointsPrio, maxPowerLoadpoints, sumMinPower, sumFlexPower, lpChargePower, prio, rates)
+			powerForLoadpointTmp[lp] = site.setValuesForLoadpointCalculation(chargerMode,
+				circuit,
+				lp,
+				countLoadpointsPrio,
+				maxPowerLoadpointsPrio,
+				minPowerPVLoadpointsPrio,
+				minPowerLoadpointsPrio,
+				maxPowerLoadpoints,
+				sumMinPower,
+				sumFlexPower,
+				lpChargePower,
+				prio,
+				rates)
 		} else {
 			powerForLoadpointTmp[lp] = 0
 		}
@@ -1148,7 +1160,6 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
 	errorPID := -pv + setpoint + flexPower
 	derivative := errorPID - site.loadpointData.prevError
 	integral := KI*errorPID + site.loadpointData.freePowerPID
-	//site.publish("Integral",integral)
 	site.loadpointData.freePowerPID = KP*errorPID + integral + KD*derivative
 	site.loadpointData.freePowerPID = min(site.loadpointData.freePowerPID, 0)
 	site.log.DEBUG.Printf("Free Power: %.0fW", site.loadpointData.freePowerPID)
@@ -1167,8 +1178,23 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
  *	Returnvalue:
  *	setpoint        float64     Value of power to regulate to
  *
- *	Function thats gives back the power available
- *	for regulation
+ *	Function that returns a setpoint for the control of Power Calculation.
+ * 	This setpoint is necessary to ensure that the control variable of the control loop
+ * 	does not leave the intended value range, as the consumption of the system
+ * 	cannot be fully controlled.
+ *
+ * 	The setpoint formation can be divided into 3 areas:
+ * 	1. PV generation < min-current
+ *	   -> Power is drawn from the grid
+ * 	   Here follows the setpoint of the PV generation, the controllable loads are throttled to the minimum
+ *
+ *	2. min-current < PV generation < max-current
+ *	   -> Grid is ~0
+ * 	   The setpoint is equal to the minimum, the controllable loads are increased
+ *
+ * 	3. max-current < PV generation
+ *	   -> Power is fed into the grid
+ * 	   The setpoint corresponds to the minimum plus the surplus, all controllable loads have reached their maximum
  */
 func (site *Site) CalculateSetpoint(flexpower, minpower, pv, maxpower, setpower float64) float64 {
 	setpoint := 0.0
