@@ -9,7 +9,7 @@ import (
 type API interface {
 	Healthy() bool
 	Loadpoints() []loadpoint.API
-	AppendLoadpoint(string, any)
+	AppendLoadpoint(any)
 	RemoveLoadpoint(string)
 	Vehicles() Vehicles
 

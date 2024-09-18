@@ -73,7 +73,7 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 			MQTTdeleteDeviceHandler(conf.ID, site, templates.Charger)
 			return err
 		}
-		site.AppendLoadpoint("test", instance.(*core.Loadpoint))
+		site.AppendLoadpoint(instance.(*core.Loadpoint))
 
 	case templates.Meter:
 		var instance any
@@ -193,7 +193,7 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 			MQTTdeleteDeviceHandler(id, site, templates.Charger)
 			return err
 		}
-		site.AppendLoadpoint("test", instance.(*core.Loadpoint))
+		site.AppendLoadpoint(instance.(*core.Loadpoint))
 
 	case templates.Meter: //battery like meter
 		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
