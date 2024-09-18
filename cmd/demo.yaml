@@ -5,7 +5,7 @@ network:
 
 log: debug
 
-interval: 3s
+interval: 1s
 
 site:
   title: Zuhause

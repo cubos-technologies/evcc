@@ -163,6 +163,8 @@ type Loadpoint struct {
 	settings settings.Settings
 
 	tasks *util.Queue[Task] // tasks to be executed
+
+	isUpdated bool
 }
 
 // NewLoadpointFromConfig creates a new loadpoint
@@ -316,6 +318,14 @@ func (lp *Loadpoint) migrateSettings() {
 			lp.settings.SetJson(keys.SocPoll, lp.Soc)
 		}
 	}
+
+	// choose sane default if mode is not set
+	if lp.mode = lp.Mode_; lp.mode == "" {
+		lp.mode = api.ModeOff
+	}
+	lp.isUpdated = true
+
+	return
 }
 
 // restoreSettings restores loadpoint settings
@@ -1113,7 +1123,7 @@ func (lp *Loadpoint) resetPVTimer(typ ...string) {
 	if len(typ) == 1 {
 		msg = fmt.Sprintf("pv %s timer reset", typ[0])
 	}
-	lp.log.DEBUG.Printf(msg)
+	lp.log.DEBUG.Println(msg)
 
 	lp.pvTimer = time.Time{}
 	lp.publishTimer(pvTimer, 0, timerInactive)
@@ -1290,7 +1300,7 @@ func (lp *Loadpoint) publishTimer(name string, delay time.Duration, action strin
 }
 
 // pvMaxCurrent calculates the maximum target current for PV mode
-func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batteryBuffered, batteryStart bool) float64 {
+func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, freePower, sitePower float64) float64 {
 	// read only once to simplify testing
 	minCurrent := lp.effectiveMinCurrent()
 	maxCurrent := lp.effectiveMaxCurrent()
@@ -1308,16 +1318,9 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower float64, batter
 		// if we did scale, adjust the effective current to the new phase count
 		effectiveCurrent /= 3.0
 	}
-	deltaCurrent := powerToCurrent(-sitePower, activePhases)
-	targetCurrent := max(effectiveCurrent+deltaCurrent, 0)
+	targetCurrent := max(-powerToCurrent(-freePower, activePhases), 0)
 
-	// in MinPV mode or under special conditions return at least minCurrent
-	if battery := batteryStart || batteryBuffered && lp.charging(); (mode == api.ModeMinPV || battery) && targetCurrent < minCurrent {
-		lp.log.DEBUG.Printf("pv charge current: min %.3gA > %.3gA (%.0fW @ %dp, battery: %t)", minCurrent, targetCurrent, sitePower, activePhases, battery)
-		return minCurrent
-	}
-
-	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA + %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, deltaCurrent, sitePower, activePhases)
+	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
 
 	if mode == api.ModePV && lp.enabled && targetCurrent < minCurrent {
 		projectedSitePower := sitePower
@@ -1672,26 +1675,20 @@ func (lp *Loadpoint) phaseSwitchCompleted() bool {
 	return time.Since(lp.phasesSwitched) > phaseSwitchDuration
 }
 
-// Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64) {
-	// smart cost
-	smartCostActive := lp.smartCostActive(rates)
-	lp.publish(keys.SmartCostActive, smartCostActive)
+func (lp *Loadpoint) SetEnvironment(greenShare float64, effPrice, effCo2 *float64) {
+	lp.sessionEnergy.SetEnvironment(greenShare, effPrice, effCo2)
+}
 
-	var smartCostNextStart time.Time
-	if !smartCostActive {
-		smartCostNextStart = lp.smartCostNextStart(rates)
-	}
-	lp.publish(keys.SmartCostNextStart, smartCostNextStart)
+// GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
+func (lp *Loadpoint) GetDataFromLoadpoint() {
+	lp.isUpdated = false
+	lp.UpdateChargePowerAndCurrents()
 
-	// long-running tasks
 	lp.processTasks()
 
 	// read and publish meters first- charge power and currents have already been updated by the site
 	lp.updateChargeVoltages()
 	lp.phasesFromChargeCurrents()
-
-	lp.sessionEnergy.SetEnvironment(greenShare, effPrice, effCo2)
 
 	// update ChargeRater here to make sure initial meter update is caught
 	lp.bus.Publish(evChargeCurrent, lp.chargeCurrent)
@@ -1712,6 +1709,14 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 	lp.publish(keys.VehicleWelcomeActive, welcomeCharge)
 	lp.publish(keys.Connected, lp.connected())
 	lp.publish(keys.Charging, lp.charging())
+
+	if sr, ok := lp.charger.(api.StatusReasoner); ok && lp.GetStatus() == api.StatusB {
+		if r, err := sr.StatusReason(); err == nil {
+			lp.publish(keys.ChargerStatusReason, r)
+		} else {
+			lp.log.ERROR.Printf("charger status reason: %v", err)
+		}
+	}
 
 	// identify connected vehicle
 	if lp.connected() && !lp.chargerHasFeature(api.IntegratedDevice) {
@@ -1734,7 +1739,28 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 		lp.publish(keys.Error, err)
 		return
 	}
+}
 
+func (lp *Loadpoint) IsUpdated() bool {
+	lp.RLock()
+	defer lp.RUnlock()
+	return lp.isUpdated
+}
+
+func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
+	lp.publish(keys.SmartCostNextStart, smartCostNextStart)
+}
+
+// Update is the main control function. It reevaluates meters and charger state
+func (lp *Loadpoint) Update(freePower, sitePower float64) {
+
+	// read and publish status
+	welcomeCharge, err := lp.updateChargerStatus()
+	if err != nil {
+		lp.log.ERROR.Println(err)
+		lp.isUpdated = true
+		return
+	}
 	// track if remote disabled is actually active
 	remoteDisabled := loadpoint.RemoteEnable
 
@@ -1784,16 +1810,8 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 		err = lp.fastCharging()
 
 	case mode == api.ModeMinPV || mode == api.ModePV:
-		// cheap tariff
-		if smartCostActive && lp.EffectivePlanTime().IsZero() {
-			err = lp.fastCharging()
-			lp.resetPhaseTimer()
-			lp.elapsePVTimer() // let PV mode disable immediately afterwards
-			break
-		}
-
-		targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryBuffered, batteryStart)
-
+		targetCurrent := lp.pvMaxCurrent(mode, freePower, sitePower)
+		//targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()
 		}
@@ -1829,4 +1847,5 @@ func (lp *Loadpoint) Update(sitePower float64, rates api.Rates, batteryBuffered,
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
 	}
+	lp.isUpdated = true
 }

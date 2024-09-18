@@ -140,6 +140,7 @@ import test from "./mixins/test";
 import NewDeviceButton from "./NewDeviceButton.vue";
 import Modbus from "./Modbus.vue";
 import GenericModal from "../GenericModal.vue";
+import Markdown from "./Markdown.vue";
 
 const initialValues = { type: "template" };
 
@@ -159,6 +160,7 @@ export default {
 		TestResult,
 		NewDeviceButton,
 		PropertyCollapsible,
+		Markdown,
 	},
 	mixins: [test],
 	props: {
@@ -232,6 +234,9 @@ export default {
 				baudrate: Baudrate,
 				port: Port,
 			};
+		},
+		description() {
+			return this.template?.Requirements?.Description;
 		},
 		apiData() {
 			return {
