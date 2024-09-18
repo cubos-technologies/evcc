@@ -125,7 +125,7 @@ func getGatewaySerial() string {
 		log.WARN.Printf("failed to run serial dumper: %w", err)
 		return defaultSerial
 	}
-	log.DEBUG.Printf("eepromOut: %s", string(eepromOut))
+	log.TRACE.Printf("eepromOut: %s", string(eepromOut))
 
 	re, err := regexp.Compile(serialPattern)
 	if err != nil {
