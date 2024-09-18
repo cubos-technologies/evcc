@@ -1,7 +1,6 @@
 package cubosdata
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"regexp"
@@ -117,57 +116,28 @@ func CubosMqttLocalConfig(log util.Logger) (globalconfig.Mqtt, error) {
 func getGatewaySerial() string {
 	var serial string
 	defaultSerial := "GW00000000"
-	serialPattern := `^GW\d{8}$`
+	serialPattern := `caSerialNumber\s+(GW[0-9]{8})`
 	log := util.NewLogger("eeprom")
 
-	var eepromOut bytes.Buffer
 	eepromCmd := exec.Command("/app/eepromDumper", "/sys/bus/i2c/devices/2-0050/eeprom")
-	eepromCmd.Stdout = &eepromOut
-	err := eepromCmd.Run()
+	eepromOut, err := eepromCmd.Output()
 	if err != nil {
 		log.WARN.Printf("failed to run serial dumper: %w", err)
 		return defaultSerial
 	}
-
-	var grepOut bytes.Buffer
-	grepCmd := exec.Command("grep", "-Eo", "caSerialNumber\\s+GW[0-9]{8}")
-	grepCmd.Stdin = &eepromOut
-	grepCmd.Stdout = &grepOut
-	err = grepCmd.Run()
-	if err != nil {
-		log.WARN.Printf("failed to run grep: %w", err)
-		return defaultSerial
-	}
-
-	var sedOut bytes.Buffer
-	sedCmd := exec.Command("sed", "s/.*GW/GW/")
-	sedCmd.Stdin = &grepOut
-	sedCmd.Stdout = &sedOut
-	err = sedCmd.Run()
-	if err != nil {
-		log.WARN.Printf("failed to run sed: %w", err)
-		return defaultSerial
-	}
-
-	var trOut bytes.Buffer
-	trCmd := exec.Command("tr", "-d", "\n")
-	trCmd.Stdin = &sedOut
-	trCmd.Stdout = &trOut
-	err = trCmd.Run()
-	if err != nil {
-		log.WARN.Printf("failed to run tr: %w", err)
-		return defaultSerial
-	}
+	log.TRACE.Printf("eepromOut: %s", string(eepromOut))
 
 	re, err := regexp.Compile(serialPattern)
 	if err != nil {
 		log.ERROR.Printf("failed to compile regex: %w")
 		return defaultSerial
 	}
-	if !re.MatchString(serial) {
-		log.WARN.Printf("serial %s does not match regex", serial)
+	match := re.FindStringSubmatch(string(eepromOut))
+	if len(match) == 0 {
+		log.WARN.Printf("no regex match for serial %v", match)
 		return defaultSerial
 	}
+	serial = match[1]
 
 	return serial
 }
