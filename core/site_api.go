@@ -251,13 +251,16 @@ func (site *Site) RemoveLoadpoint(ref string) { // TODO Identify Loadpoint by Ch
 	site.Lock()
 	defer site.Unlock()
 	var index int
+	var topic string
 	for i, lp := range site.loadpoints {
 		if lp.ChargerRef == ref {
 			index = i
+			topic = lp.title
 			break
 		}
 	}
 	site.loadpoints = append(site.loadpoints[:index], site.loadpoints[index+1:]...)
+	site.publish(keys.Chargepoints, map[string]meterStatus{topic + "/status": {Status: "removed"}})
 }
 
 // loadpointsAsCircuitDevices returns the loadpoints as circuit devices
