@@ -269,10 +269,9 @@ func runRoot(cmd *cobra.Command, args []string) {
 		once.Do(func() { close(stopC) }) // signal loop to end
 	})
 
-	// show and check version, reduce api load during development
+	// show version
 	if server.Version != server.DevVersion {
 		valueChan <- util.Param{Key: keys.Version, Val: server.FormattedVersion()}
-		//go updater.Run(log, httpd, valueChan)
 	}
 
 	// setup site
