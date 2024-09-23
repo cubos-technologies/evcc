@@ -16,8 +16,9 @@ type msgHandler struct {
 	val      *util.Monitor[string]
 }
 
-func (h *msgHandler) receive(payload string) {
+func (h *msgHandler) receive(payload string, topic string) {
 	h.val.Set(payload)
+	h.topic = topic
 }
 
 // hasValue returned the received and processed payload as string

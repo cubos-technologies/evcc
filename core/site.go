@@ -1,10 +1,10 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -35,32 +35,67 @@ import (
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Id       string     `json:"id"`
-	Power    float64    `json:"power"`
-	Energy   float64    `json:"energy,omitempty"`
-	Currents [3]float64 `json:"currents,omitempty"`
-	Voltages [3]float64 `json:"voltages,omitempty"`
+	Power          int   `json:"P"`
+	Energy         int   `json:"EPos"`
+	EnergyNegative int   `json:"ENeg"`
+	IL1            int   `json:"IL1"`
+	IL2            int   `json:"IL2"`
+	IL3            int   `json:"IL3"`
+	UL1            int   `json:"UL1"`
+	UL2            int   `json:"UL2"`
+	UL3            int   `json:"UL3"`
+	Timestamp      int64 `json:"timestamp"`
 }
 
 type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Id           string  `json:"id"`
-	Power        float64 `json:"power"`
-	Energy       float64 `json:"energy,omitempty"`
-	Soc          float64 `json:"soc,omitempty"`
-	Capacity     float64 `json:"capacity,omitempty"`
-	Controllable bool    `json:"controllable"`
+	Power          int   `json:"P"`
+	Energy         int   `json:"EPos"`
+	EnergyNegative int   `json:"ENeg"`
+	Soc            int   `json:"soc"`
+	Capacity       int   `json:"capacity"`
+	Controllable   bool  `json:"controllable"`
+	IL1            int   `json:"IL1"`
+	IL2            int   `json:"IL2"`
+	IL3            int   `json:"IL3"`
+	UL1            int   `json:"UL1"`
+	UL2            int   `json:"UL2"`
+	UL3            int   `json:"UL3"`
+	Timestamp      int64 `json:"timestamp"`
 }
 
 type BatteryMeasurement = batteryMeasurement
+
+type ChargepointMeasurement struct {
+	Power     int    `json:"P"`
+	Energy    int    `json:"E"`
+	IL1       int    `json:"IL1"`
+	IL2       int    `json:"IL2"`
+	IL3       int    `json:"IL3"`
+	UL1       int    `json:"UL1"`
+	UL2       int    `json:"UL2"`
+	UL3       int    `json:"UL3"`
+	Rfid      string `json:"active_rfid_tag"`
+	Hems      int    `json:"hems_current"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type meterError struct {
+	Error string `json:"error"`
+}
+
+type meterStatus struct {
+	Status string `json:"status"`
+}
 
 var _ site.API = (*Site)(nil)
 
 // Site is the main configuration container. A site can host multiple loadpoints.
 type Site struct {
 	uiChan       chan<- util.Param // client push messages
+	pushChan     chan<- push.Event
 	lpUpdateChan chan *Loadpoint
 
 	*Health
@@ -79,12 +114,12 @@ type Site struct {
 	MaxGridSupplyWhileBatteryCharging float64 `mapstructure:"maxGridSupplyWhileBatteryCharging"` // ignore battery charging if AC consumption is above this value
 
 	// meters
-	circuit       api.Circuit // Circuit
-	gridMeter     api.Meter   // Grid usage meter
-	pvMeters      []api.Meter // PV generation meters
-	batteryMeters []api.Meter // Battery charging meters
-	extMeters     []api.Meter // External meters - for monitoring only
-	auxMeters     []api.Meter // Auxiliary meters
+	circuit       api.Circuit          // Circuit
+	gridMeter     map[string]api.Meter // Grid usage meter
+	pvMeters      map[string]api.Meter // PV generation meters
+	batteryMeters map[string]api.Meter // Battery charging meters
+	extMeters     map[string]api.Meter // External meters - for monitoring only
+	auxMeters     map[string]api.Meter // Auxiliary meters
 
 	// battery settings
 	prioritySoc             float64  // prefer battery up to this Soc
@@ -186,7 +221,7 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 
 		if db.Instance != nil {
 			var err error
-			if lp.db, err = session.NewStore(lp.Title(), db.Instance); err != nil {
+			if lp.db, err = session.NewStore(lp.GetTitle(), db.Instance); err != nil {
 				return err
 			}
 			// Fix any dangling history
@@ -205,30 +240,45 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 	}
 
 	// grid meter
+	site.gridMeter = make(map[string]api.Meter)
 	if site.Meters.GridMeterRef != "" {
 		dev, err := config.Meters().ByName(site.Meters.GridMeterRef)
 		if err != nil {
 			return err
 		}
-		site.gridMeter = dev.Instance()
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.gridMeter[cubosId] = dev.Instance()
+		} else {
+			site.gridMeter[site.Meters.GridMeterRef] = dev.Instance()
+		}
 	}
 
 	// multiple pv
+	site.pvMeters = make(map[string]api.Meter)
 	for _, ref := range site.Meters.PVMetersRef {
 		dev, err := config.Meters().ByName(ref)
 		if err != nil {
 			return err
 		}
-		site.pvMeters = append(site.pvMeters, dev.Instance())
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.pvMeters[cubosId] = dev.Instance()
+		} else {
+			site.pvMeters[ref] = dev.Instance()
+		}
 	}
 
 	// multiple batteries
+	site.batteryMeters = make(map[string]api.Meter)
 	for _, ref := range site.Meters.BatteryMetersRef {
 		dev, err := config.Meters().ByName(ref)
 		if err != nil {
 			return err
 		}
-		site.batteryMeters = append(site.batteryMeters, dev.Instance())
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.batteryMeters[cubosId] = dev.Instance()
+		} else {
+			site.batteryMeters[ref] = dev.Instance()
+		}
 	}
 
 	if len(site.batteryMeters) > 0 && site.GetResidualPower() <= 0 {
@@ -236,21 +286,31 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 	}
 
 	// Meters used only for monitoring
+	site.extMeters = make(map[string]api.Meter)
 	for _, ref := range site.Meters.ExtMetersRef {
 		dev, err := config.Meters().ByName(ref)
 		if err != nil {
 			return err
 		}
-		site.extMeters = append(site.extMeters, dev.Instance())
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.extMeters[cubosId] = dev.Instance()
+		} else {
+			site.extMeters[ref] = dev.Instance()
+		}
 	}
 
 	// auxiliary meters
+	site.auxMeters = make(map[string]api.Meter)
 	for _, ref := range site.Meters.AuxMetersRef {
 		dev, err := config.Meters().ByName(ref)
 		if err != nil {
 			return err
 		}
-		site.auxMeters = append(site.auxMeters, dev.Instance())
+		if cubosId, found := dev.Config().Other["cubos_id"].(string); found {
+			site.auxMeters[cubosId] = dev.Instance()
+		} else {
+			site.auxMeters[ref] = dev.Instance()
+		}
 	}
 
 	// revert battery mode on shutdown
@@ -380,31 +440,34 @@ func (site *Site) DumpConfig() {
 
 	site.log.INFO.Println("site config:")
 	site.log.INFO.Printf("  meters:      grid %s pv %s battery %s",
-		presence[site.gridMeter != nil],
+		presence[len(site.gridMeter) != 0],
 		presence[len(site.pvMeters) > 0],
 		presence[len(site.batteryMeters) > 0],
 	)
 
-	if site.gridMeter != nil {
+	if len(site.gridMeter) != 0 {
 		site.log.INFO.Println(meterCapabilities("grid", site.gridMeter))
 	}
 
-	if len(site.pvMeters) > 0 {
-		for i, pv := range site.pvMeters {
-			site.log.INFO.Println(meterCapabilities(fmt.Sprintf("pv %d", i+1), pv))
-		}
+	// TODO go 1.23 use sorted
+	for ref, pv := range site.pvMeters {
+		site.log.INFO.Println(meterCapabilities(fmt.Sprintf("pv %s", ref), pv))
 	}
 
-	if len(site.batteryMeters) > 0 {
-		for i, battery := range site.batteryMeters {
-			_, ok := battery.(api.Battery)
-			_, hasCapacity := battery.(api.BatteryCapacity)
+	// TODO go 1.23 use sorted
+	for ref, battery := range site.batteryMeters {
+		_, ok := battery.(api.Battery)
+		_, hasCapacity := battery.(api.BatteryCapacity)
 
-			site.log.INFO.Println(
-				meterCapabilities(fmt.Sprintf("battery %d", i+1), battery),
-				fmt.Sprintf("soc %s capacity %s", presence[ok], presence[hasCapacity]),
-			)
-		}
+		site.log.INFO.Println(
+			meterCapabilities(fmt.Sprintf("battery %s", ref), battery),
+			fmt.Sprintf("soc %s capacity %s", presence[ok], presence[hasCapacity]),
+		)
+	}
+
+	// TODO go 1.23 use sorted
+	for ref, pv := range site.auxMeters {
+		site.log.INFO.Println(meterCapabilities(fmt.Sprintf("aux %s", ref), pv))
 	}
 
 	if vehicles := site.Vehicles().Instances(); len(vehicles) > 0 {
@@ -443,7 +506,7 @@ func (site *Site) DumpConfig() {
 		lp.log.INFO.Printf("  meters:      charge %s", presence[lp.HasChargeMeter()])
 
 		if lp.HasChargeMeter() {
-			lp.log.INFO.Println(meterCapabilities("charge", lp.chargeMeter))
+			lp.log.INFO.Print(meterCapabilities("charge", lp.chargeMeter))
 		}
 	}
 }
@@ -469,84 +532,162 @@ func (site *Site) publishDelta(key string, val interface{}) {
 }
 
 // updateAuxMeters updates aux meters
-func (site *Site) updateAuxMeters() {
+func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 	if len(site.auxMeters) == 0 {
 		return
 	}
 
-	mm := make([]meterMeasurement, len(site.auxMeters))
+	var meterOnline bool
+	mmm := make(map[string]meterMeasurement, len(site.auxMeters))
 
-	for i, meter := range site.auxMeters {
-		if power, err := meter.CurrentPower(); err == nil {
+	for ref, meter := range site.auxMeters {
+		mm := meterMeasurement{}
+		// aux power
+		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
+		if err == nil {
 			site.auxPower += power
-			mm[i].Power = power
-			site.log.DEBUG.Printf("aux power %d: %.0fW", i+1, power)
+			mm.Power = int(power)
+			site.log.DEBUG.Printf("aux power %s: %.0fW", ref, power)
+			meterOnline = true
 		} else {
-			site.log.ERROR.Printf("aux meter %d: %v", i+1, err)
+			site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
+		// aux energy
+		if energyMeter, ok := meter.(api.MeterEnergy); err == nil && ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				mm.Energy = int(energy * 10)
+				site.log.DEBUG.Printf("aux energy %s: %.0fW", ref, energy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		// aux export energy
+		if energyMeter, ok := meter.(api.ExportEnergy); err == nil && ok {
+			exportEnergy, err := energyMeter.ExportEnergy()
+			if err == nil {
+				mm.EnergyNegative = int(exportEnergy * 10)
+				site.log.DEBUG.Printf("aux export energy %s: %.0fW", ref, exportEnergy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		// aux currents
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			var currents [3]float64
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				mm.IL1 = int(currents[0] * 1000)
+				mm.IL2 = int(currents[1] * 1000)
+				mm.IL3 = int(currents[2] * 1000)
+				site.log.DEBUG.Printf("aux currents %s: %v", ref, currents)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		// aux voltages
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			var voltages [3]float64
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				mm.UL1 = int(voltages[0] * 1000)
+				mm.UL2 = int(voltages[1] * 1000)
+				mm.UL3 = int(voltages[2] * 1000)
+				site.log.DEBUG.Printf("aux voltages %s: %v", ref, voltages)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("aux meter %s: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+		mm.Timestamp = time.Now().UnixMilli()
+		if meterOnline {
+			mmm[ref+"/record"] = mm
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
+		}
+
 	}
 
 	site.log.DEBUG.Printf("aux power: %.0fW", site.auxPower)
 	site.publish(keys.AuxPower, site.auxPower)
-	site.publish(keys.Aux, mm)
+	site.publish(keys.Aux, mmm)
 }
 
 // updatePvMeters updates pv meters. All measurements are optional.
 func (site *Site) updatePvMeters() {
+
 	if len(site.pvMeters) == 0 {
+		site.publish(keys.PvPower, site.pvPower)
+		site.publish(keys.PvEnergy, 0)
+		site.publish(keys.Pv, nil)
 		return
 	}
 
 	var totalEnergy, totalExportEnergy float64
-	tmpPVPower := 0.0
-	mm := make([]meterMeasurement, len(site.pvMeters))
+	var meterOnline bool
 
-	for i, meter := range site.pvMeters {
+	mmm := make(map[string]meterMeasurement, len(site.pvMeters))
+	tmpPVPower := 0.0
+
+	for ref, meter := range site.pvMeters {
 		// pv power
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err == nil {
 			// ignore negative values which represent self-consumption
 			tmpPVPower += max(0, power)
 			if power < -500 {
-				site.log.WARN.Printf("pv %d power: %.0fW is negative - check configuration if sign is correct", i+1, power)
+				site.log.WARN.Printf("pv %s power: %.0fW is negative - check configuration if sign is correct", ref, power)
 			}
+			meterOnline = true
 		} else {
-			site.log.ERROR.Printf("pv %d power: %v", i+1, err)
-			return
+			site.log.ERROR.Printf("pv %s power: %v", ref, err)
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
 
-		// pv total energy
+		// pv energy (production)
 		var energy float64
-		if energyMeter, ok := meter.(api.MeterEnergy); ok {
-			energy, err := energyMeter.TotalEnergy()
+		if m, ok := meter.(api.MeterEnergy); err == nil && ok {
+			energy, err = m.TotalEnergy()
 			if err == nil {
 				totalEnergy += energy
-				site.log.DEBUG.Printf("pv %d energy: %.0fWh", i+1, energy)
+				site.log.DEBUG.Printf("pv %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("pv %d energy: %v", i+1, err)
-				return
+				site.log.ERROR.Printf("pv %s energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
 		// pv export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
 				totalExportEnergy += exportEnergy
-				site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, exportEnergy)
+				site.log.DEBUG.Printf("pv %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
-			}
-		}
-
-		// pv export energy
-		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
-			if err == nil {
-				totalExportEnergy += exportEnergy
-				site.log.DEBUG.Printf("pv %d export energy: %.0fWh", i+1, exportEnergy)
-			} else {
-				site.log.ERROR.Printf("pv %d export energy: %v", i+1, err)
+				site.log.ERROR.Printf("pv %s export energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -555,9 +696,12 @@ func (site *Site) updatePvMeters() {
 		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
 			currents[0], currents[1], currents[2], err = m.Currents()
 			if err == nil {
-				site.log.DEBUG.Printf("pv %d currents: %v", i+1, currents)
+				site.log.DEBUG.Printf("pv %s currents: %v", ref, currents)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("pv %d currents: %v", i+1, err)
+				site.log.ERROR.Printf("pv %s currents: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -565,20 +709,35 @@ func (site *Site) updatePvMeters() {
 		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
 			voltages[0], voltages[1], voltages[2], err = m.Voltages()
 			if err == nil {
-				site.log.DEBUG.Printf("pv %d voltages: %v", i+1, voltages)
+				site.log.DEBUG.Printf("pv %s voltages: %v", ref, voltages)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("pv %d voltages: %v", i+1, err)
+				site.log.ERROR.Printf("pv %s voltages: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		} else {
 			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
 		}
 
-		mm[i] = meterMeasurement{
-			Id:       strconv.Itoa(i),
-			Power:    power,
-			Energy:   energy,
-			Currents: currents,
-			Voltages: voltages,
+		mmm[ref+"/record"] = meterMeasurement{
+			Power:          int(power),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().UnixMilli(),
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 	site.mux.Lock()
@@ -587,7 +746,9 @@ func (site *Site) updatePvMeters() {
 	site.log.DEBUG.Printf("pv power: %.0fW", site.pvPower)
 	site.publish(keys.PvPower, site.pvPower)
 	site.publish(keys.PvEnergy, totalEnergy)
-	site.publish(keys.Pv, mm)
+	site.publish(keys.Pv, mmm)
+
+	site.publish(keys.Meters, mmm)
 }
 
 // updateExtMeters updates ext meters. All measurements are optional.
@@ -596,89 +757,159 @@ func (site *Site) updateExtMeters() {
 		return
 	}
 
-	mm := make([]meterMeasurement, len(site.extMeters))
+	var meterOnline bool
 
-	for i, meter := range site.extMeters {
+	mmm := make(map[string]meterMeasurement, len(site.extMeters))
+
+	for ref, meter := range site.extMeters {
 		// ext power
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err == nil {
-			site.log.DEBUG.Printf("ext meter %d power: %.0fW", i+1, power)
+			site.log.DEBUG.Printf("ext meter %s power: %.0fW", ref, power)
+			meterOnline = true
 		} else {
-			site.log.ERROR.Printf("ext meter %d power: %v", i+1, err)
-
+			site.log.ERROR.Printf("ext meter %s power: %v", ref, err)
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			meterOnline = false
 		}
 		// ext energy
 		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
-			energy, err := energyMeter.TotalEnergy()
+			energy, err = energyMeter.TotalEnergy()
 			if err == nil {
-				site.log.DEBUG.Printf("ext %d energy: %.0fWh", i+1, energy)
+				site.log.DEBUG.Printf("ext %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("ext %d energy: %v", i+1, err)
+				site.log.ERROR.Printf("ext %s energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 		// ext export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
-				site.log.DEBUG.Printf("ext %d export energy: %.0fWh", i+1, exportEnergy)
+				site.log.DEBUG.Printf("ext %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("ext %d export energy: %v", i+1, err)
+				site.log.ERROR.Printf("ext %s export energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
-		mm[i] = meterMeasurement{
-			Power:  power,
-			Energy: energy,
+
+		// currents and voltages handling
+		var currents [3]float64
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %s currents: %v", ref, currents)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("pv %s currents: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+
+		var voltages [3]float64
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				site.log.DEBUG.Printf("pv %s voltages: %v", ref, voltages)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("pv %s voltages: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		} else {
+			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
+		}
+
+		mmm[ref+"/record"] = meterMeasurement{
+			Power:          int(power),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().UnixMilli(),
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
-
-	// Publishing will be done in separate PR
+	site.publish(keys.Meters, mmm)
 }
 
 // updateBatteryMeters updates battery meters. Power is retried, other measurements are optional.
 func (site *Site) updateBatteryMeters() error {
+	site.batteryPower = 0
+	site.batterySoc = 0
 	if len(site.batteryMeters) == 0 {
+		site.publish(keys.BatterySoc, site.batterySoc)
+		site.publish(keys.BatteryPower, site.batteryPower)
+		site.publish(keys.BatteryEnergy, 0)
+		site.publish(keys.Battery, nil)
 		return nil
 	}
 
 	var totalCapacity, totalEnergy float64
+	var meterOnline bool
 
+	mmm := make(map[string]batteryMeasurement, len(site.batteryMeters))
 	tmpBatteryPower := 0.0
 	tmpBatterySoc := 0.0
 
-	mm := make([]batteryMeasurement, len(site.batteryMeters))
-
-	for i, meter := range site.batteryMeters {
+	for ref, meter := range site.batteryMeters {
 		power, err := backoff.RetryWithData(meter.CurrentPower, bo())
 		if err != nil {
 			// power is required- return on error
-			return fmt.Errorf("battery %d power: %v", i+1, err)
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/error": {Status: "offline"}})
+			return fmt.Errorf("battery %s power: %v", ref, err)
 		}
 
 		tmpBatteryPower += power
 		if len(site.batteryMeters) > 1 {
-			site.log.DEBUG.Printf("battery %d power: %.0fW", i+1, power)
+			site.log.DEBUG.Printf("battery %s power: %.0fW", ref, power)
 		}
 
 		// battery total energy
 		var energy float64
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
-			energy, err := energyMeter.TotalEnergy()
+			energy, err = energyMeter.TotalEnergy()
 			if err == nil {
 				totalEnergy += energy
-				site.log.DEBUG.Printf("battery %d energy: %.0fWh", i+1, energy)
+				site.log.DEBUG.Printf("battery %s energy: %.0fWh", ref, energy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("battery %d energy: %v", i+1, err)
+				site.log.ERROR.Printf("battery %s energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
 		// battery export energy
+		var exportEnergy float64
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
-			exportEnergy, err := exportMeter.ExportEnergy()
+			exportEnergy, err = exportMeter.ExportEnergy()
 			if err == nil {
-				site.log.DEBUG.Printf("battery %d export energy: %.0fWh", i+1, exportEnergy)
+				site.log.DEBUG.Printf("battery %s export energy: %.0fWh", ref, exportEnergy)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("battery %d export energy: %v", i+1, err)
+				site.log.ERROR.Printf("battery %s export energy: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
@@ -698,22 +929,68 @@ func (site *Site) updateBatteryMeters() error {
 
 				tmpBatterySoc += weighedSoc
 				if len(site.batteryMeters) > 1 {
-					site.log.DEBUG.Printf("battery %d soc: %.0f%%", i+1, batSoc)
+					site.log.DEBUG.Printf("battery %s soc: %.0f%%", ref, batSoc)
 				}
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("battery %d soc: %v", i+1, err)
+				site.log.ERROR.Printf("battery %s soc: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
+		}
+
+		// currents and voltages handling
+		var currents [3]float64
+		if m, ok := meter.(api.PhaseCurrents); err == nil && ok {
+			currents[0], currents[1], currents[2], err = m.Currents()
+			if err == nil {
+				site.log.DEBUG.Printf("battery %s currents: %v", ref, currents)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("battery %s currents: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		}
+
+		var voltages [3]float64
+		if m, ok := meter.(api.PhaseVoltages); err == nil && ok {
+			voltages[0], voltages[1], voltages[2], err = m.Voltages()
+			if err == nil {
+				site.log.DEBUG.Printf("battery %s voltages: %v", ref, voltages)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("battery %s voltages: %v", ref, err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+		} else {
+			voltages[0], voltages[1], voltages[2] = -0.001, -0.001, -0.001
 		}
 
 		_, controllable := meter.(api.BatteryController)
 
-		mm[i] = batteryMeasurement{
-			Id:           strconv.Itoa(i),
-			Power:        power,
-			Energy:       energy,
-			Soc:          batSoc,
-			Capacity:     capacity,
-			Controllable: controllable,
+		mmm[ref+"/record"] = batteryMeasurement{
+			Power:          int(power),
+			Energy:         int(energy * 10),
+			EnergyNegative: int(exportEnergy * 10),
+			Soc:            int(batSoc),
+			Capacity:       int(capacity),
+			Controllable:   controllable,
+			IL1:            int(currents[0] * 1000),
+			IL2:            int(currents[1] * 1000),
+			IL3:            int(currents[2] * 1000),
+			UL1:            int(voltages[0] * 1000),
+			UL2:            int(voltages[1] * 1000),
+			UL3:            int(voltages[2] * 1000),
+			Timestamp:      time.Now().UnixMilli(),
+		}
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+		} else {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			// delete meterMeasurement from map to not publish incorrect values
+			delete(mmm, ref+"/record")
 		}
 	}
 
@@ -731,7 +1008,11 @@ func (site *Site) updateBatteryMeters() error {
 	site.log.DEBUG.Printf("battery power: %.0fW", tmpBatteryPower)
 	site.publish(keys.BatteryPower, tmpBatteryPower)
 	site.publish(keys.BatteryEnergy, totalEnergy)
-	site.publish(keys.Battery, mm)
+	site.publish(keys.Battery, mmm)
+
+	site.publish(keys.Meters, mmm)
+
+	// Publish the total export energy for batteries
 	site.mux.Lock()
 	site.batteryPower = tmpBatteryPower
 	site.batterySoc = tmpBatterySoc
@@ -741,68 +1022,108 @@ func (site *Site) updateBatteryMeters() error {
 
 // updateGridMeter updates grid meter. Power is retried, other measurements are optional.
 func (site *Site) updateGridMeter() error {
-	if site.gridMeter == nil {
+	if len(site.gridMeter) == 0 {
 		return nil
 	}
 
-	if res, err := backoff.RetryWithData(site.gridMeter.CurrentPower, bo()); err == nil {
-		site.gridPower = res
-		site.log.DEBUG.Printf("grid meter: %.0fW", res)
-		site.publish(keys.GridPower, res)
-	} else {
-		return fmt.Errorf("grid meter: %v", err)
-	}
+	var mm meterMeasurement
+	var meterOnline bool
 
-	// grid phase currents (signed)
-	if phaseMeter, ok := site.gridMeter.(api.PhaseCurrents); ok {
-		// grid phase powers
-		var p1, p2, p3 float64
-		if phaseMeter, ok := site.gridMeter.(api.PhasePowers); ok {
-			var err error // phases needed for signed currents
-			if p1, p2, p3, err = phaseMeter.Powers(); err == nil {
-				phases := []float64{p1, p2, p3}
-				site.log.DEBUG.Printf("grid powers: %.0fW", phases)
-				site.publish(keys.GridPowers, phases)
+	for ref, meter := range site.gridMeter {
+		if res, err := backoff.RetryWithData(meter.CurrentPower, bo()); err == nil {
+			site.gridPower = res
+			site.log.DEBUG.Printf("grid meter: %.0fW", res)
+			site.publish(keys.GridPower, res)
+		} else {
+			site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+			return fmt.Errorf("grid meter: %v", err)
+		}
+
+		// grid phase currents (signed)
+		if phaseMeter, ok := meter.(api.PhaseCurrents); ok {
+			// grid phase powers
+			var p1, p2, p3 float64
+			if phaseMeter, ok := meter.(api.PhasePowers); ok {
+				var err error // phases needed for signed currents
+				if p1, p2, p3, err = phaseMeter.Powers(); err == nil {
+					phases := []float64{p1, p2, p3}
+					site.log.DEBUG.Printf("grid powers: %.0fW", phases)
+					site.publish(keys.GridPowers, phases)
+					meterOnline = true
+				} else {
+					site.log.ERROR.Printf("grid powers: %v", err)
+					site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+					meterOnline = false
+				}
+			}
+
+			if i1, i2, i3, err := phaseMeter.Currents(); err == nil {
+				mm.IL1 = int(i1 * 1000)
+				mm.IL2 = int(i2 * 1000)
+				mm.IL3 = int(i3 * 1000)
+				phases := []float64{util.SignFromPower(i1, p1), util.SignFromPower(i2, p2), util.SignFromPower(i3, p3)}
+				site.log.DEBUG.Printf("grid currents: %.3gA", phases)
+				site.publish(keys.GridCurrents, phases)
+				meterOnline = true
 			} else {
-				site.log.ERROR.Printf("grid powers: %v", err)
+				site.log.ERROR.Printf("grid currents: %v", err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
+
+			if u1, u2, u3, err := phaseMeter.(api.PhaseVoltages).Voltages(); err == nil {
+				mm.UL1 = int(u1 * 1000)
+				mm.UL2 = int(u2 * 1000)
+				mm.UL3 = int(u3 * 1000)
+				phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
+				site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
+				site.publish(keys.GridVoltages, phases)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("grid voltages: %v", err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
 			}
 		}
 
-		if i1, i2, i3, err := phaseMeter.Currents(); err == nil {
-			phases := []float64{util.SignFromPower(i1, p1), util.SignFromPower(i2, p2), util.SignFromPower(i3, p3)}
-			site.log.DEBUG.Printf("grid currents: %.3gA", phases)
-			site.publish(keys.GridCurrents, phases)
-		} else {
-			site.log.ERROR.Printf("grid currents: %v", err)
+		// grid energy (import)
+		if energyMeter, ok := meter.(api.MeterEnergy); ok {
+			energy, err := energyMeter.TotalEnergy()
+			if err == nil {
+				mm.Energy = int(energy * 10)
+				site.publish(keys.GridEnergy, energy)
+				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("grid energy: %v", err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
 		}
 
-		if u1, u2, u3, err := site.gridMeter.(api.PhaseVoltages).Voltages(); err == nil {
-			phases := []float64{util.SignFromPower(u1, p1), util.SignFromPower(u2, p2), util.SignFromPower(u3, p3)}
-			site.log.DEBUG.Printf("grid voltages: %.3gV", phases)
-			site.publish(keys.GridVoltages, phases)
-		} else {
-			site.log.ERROR.Printf("grid voltages: %v", err)
+		// grid energy (export)
+		if exportMeter, ok := meter.(api.ExportEnergy); ok {
+			exportEnergy, err := exportMeter.ExportEnergy()
+			if err == nil {
+				mm.EnergyNegative = int(exportEnergy * 10)
+				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
+				meterOnline = true
+			} else {
+				site.log.ERROR.Printf("grid export energy: %v", err)
+				site.publish(keys.Meters, map[string]meterError{ref + "/error": {Error: err.Error()}})
+				meterOnline = false
+			}
 		}
-	}
 
-	// grid total energy
-	if energyMeter, ok := site.gridMeter.(api.MeterEnergy); ok {
-		energy, err := energyMeter.TotalEnergy()
-		if err == nil {
-			site.publish(keys.GridEnergy, energy)
-			site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
-		} else {
-			site.log.ERROR.Printf("grid energy: %v", err)
-		}
-	}
+		mm.Power = int(site.gridPower)
+		mm.Timestamp = time.Now().UnixMilli()
 
-	// grid export energy
-	if exportMeter, ok := site.gridMeter.(api.ExportEnergy); ok {
-		exportEnergy, err := exportMeter.ExportEnergy()
-		if err == nil {
-			site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
+		if meterOnline {
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "online"}})
+			site.publish(keys.Meters, map[string]meterMeasurement{ref + "/record": mm})
 		} else {
-			site.log.ERROR.Printf("grid export energy: %v", err)
+			site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 		}
 	}
 
@@ -1224,12 +1545,12 @@ func (site *Site) CheckCircuitList(circuit api.Circuit) {
  */
 func (site *Site) CheckMeters(chargePower float64) {
 	//
-	if site.gridMeter == nil {
+	if len(site.gridMeter) == 0 {
 		site.gridPower = chargePower - site.pvPower
 		site.publish(keys.GridPower, site.gridPower)
 	}
 	//
-	if site.pvMeters == nil {
+	if len(site.pvMeters) == 0 {
 		site.pvPower = chargePower - site.gridPower + site.GetResidualPower()
 		if site.pvPower < 0 {
 			site.pvPower = 0
@@ -1527,11 +1848,53 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
  *	get the Power from the Map and Update the Loadpoint.
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
+	var err error
+
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	lp.Update(loadpointPower, site.gridPower)
-	lp.GetDataFromLoadpoint()
+	lpUpdateError := lp.Update(loadpointPower, site.gridPower)
+	getDataError := lp.GetDataFromLoadpoint()
+	// set the err var to the first non-nil value
+	err = cmp.Or(getDataError, lpUpdateError)
+
+	ref := lp.title
+
+	if err != nil {
+		site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "offline"}})
+		site.publish(keys.Chargepoints, map[string]meterError{ref + "/error": {Error: err.Error()}})
+		return
+	}
+
+	cpm := ChargepointMeasurement{
+		Power:     int(lp.chargePower),
+		Energy:    int(lp.sessionEnergy.TotalWh()),
+		IL1:       0,
+		IL2:       0,
+		IL3:       0,
+		UL1:       -1,
+		UL2:       -1,
+		UL3:       -1,
+		Rfid:      lp.vehicleIdentifier,
+		Hems:      int(lp.chargeCurrent),
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	currents := lp.chargeCurrents
+	if len(currents) == 3 {
+		cpm.IL1 = int(currents[0] * 1000)
+		cpm.IL2 = int(currents[1] * 1000)
+		cpm.IL3 = int(currents[2] * 1000)
+	}
+	voltages := lp.chargeVoltages
+	if len(voltages) == 3 {
+		cpm.UL1 = int(voltages[0] * 1000)
+		cpm.UL2 = int(voltages[1] * 1000)
+		cpm.UL3 = int(voltages[2] * 1000)
+	}
+
+	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
+	site.publish(keys.Chargepoints, map[string]ChargepointMeasurement{ref + "/record": cpm})
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread
@@ -1591,7 +1954,7 @@ func (site *Site) prepare() {
 
 	site.publish(keys.SiteTitle, site.Title)
 
-	site.publish(keys.GridConfigured, site.gridMeter != nil)
+	site.publish(keys.GridConfigured, len(site.gridMeter) != 0)
 	site.publish(keys.Pv, make([]api.Meter, len(site.pvMeters)))
 	site.publish(keys.Battery, make([]api.Meter, len(site.batteryMeters)))
 	site.publish(keys.PrioritySoc, site.prioritySoc)
@@ -1623,6 +1986,7 @@ func (site *Site) Prepare(uiChan chan<- util.Param, pushChan chan<- push.Event) 
 
 	// use ch.In for writing
 	site.uiChan = ch.In
+	site.pushChan = pushChan
 
 	// use ch.Out for reading
 	go func() {

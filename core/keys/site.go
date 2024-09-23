@@ -38,6 +38,8 @@ const (
 	BatteryMeters = "batteryMeters"
 	ExtMeters     = "extMeters"
 	AuxMeters     = "auxMeters"
+	Meters        = "energymeter"
+	Chargepoints  = "chargepoint"
 
 	// battery settings
 	BatteryCapacity                   = "batteryCapacity"

@@ -14,6 +14,7 @@ import (
 
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/provider/mqtt"
 	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server"
 	"github.com/evcc-io/evcc/util"
@@ -209,15 +210,6 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// TODO
 	valueChan <- util.Param{Key: keys.Sponsor, Val: sponsor.Status()}
 
-	// setup mqtt publisher
-	if err == nil && conf.Mqtt.Broker != "" {
-		var mqtt *server.MQTT
-		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site)
-		if err == nil {
-			go mqtt.Run(site, pipe.NewDropper(append(ignoreMqtt, ignoreEmpty)...).Pipe(tee.Attach()))
-		}
-	}
-
 	// announce on mDNS
 	if err == nil && strings.HasSuffix(conf.Network.Host, ".local") {
 		err = configureMDNS(conf.Network)
@@ -264,6 +256,18 @@ func runRoot(cmd *cobra.Command, args []string) {
 	// allow web access for vehicles
 	configureAuth(conf.Network, config.Instances(config.Vehicles().Devices()), httpd.Router(), valueChan)
 
+	// setup mqtt publisher
+	if err == nil && conf.Mqtt.Broker != "" {
+		var mqtt *server.MQTT
+		mqtt, err = server.NewMQTT(strings.Trim(conf.Mqtt.Topic, "/"), site, func() {
+			log.INFO.Println("evcc was stopped by user. OS should restart the service. Or restart manually.")
+			once.Do(func() { close(stopC) }) // signal loop to end
+		}, valueChan)
+		if err == nil {
+			go mqtt.Run(site, pipe.NewDropper(append(ignoreMqtt, ignoreEmpty)...).Pipe(tee.Attach()))
+		}
+	}
+
 	httpd.RegisterSystemHandler(valueChan, cache, func() {
 		log.INFO.Println("evcc was stopped by user. OS should restart the service. Or restart manually.")
 		once.Do(func() { close(stopC) }) // signal loop to end
@@ -295,7 +299,11 @@ func runRoot(cmd *cobra.Command, args []string) {
 		// TODO stop reboot loop if user updates config (or show countdown in UI)
 		log.FATAL.Println(err)
 		log.FATAL.Printf("will attempt restart in: %v", rebootDelay)
-
+		// Send info about failed start on MQTT
+		if mqtt.Instance != nil && mqtt.Instance.Client.IsConnected() {
+			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/status", conf.Mqtt.Topic), 1, true, "offline")
+			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/error", conf.Mqtt.Topic), 1, true, err.Error())
+		}
 		go func() {
 			<-time.After(rebootDelay)
 			once.Do(func() { close(stopC) }) // signal loop to end

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/evcc-io/evcc/util/templates"
 	"gorm.io/gorm"
@@ -71,6 +72,24 @@ func (d *Config) Update(conf map[string]any) error {
 		d.Value = val
 
 		return tx.Save(&d).Error
+	})
+}
+
+// Reads a config's details from the database
+func (d *Config) Read(conf map[string]any) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var config Config
+		val, _ := detailsFromMap(conf)
+		c := Config{Value: strings.ReplaceAll(val[1:len(val)-1], `\`, ""), Class: d.Class}
+		if err := tx.Where("value LIKE ? AND class = ? ", "%"+c.Value+"%", c.Class).First(&config).Error; err != nil {
+			return err
+		}
+		d.ID = config.ID
+		d.Class = config.Class
+		d.Value = config.Value
+		d.Type = config.Type
+
+		return nil
 	})
 }
 
