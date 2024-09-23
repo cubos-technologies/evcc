@@ -104,7 +104,6 @@ type Site struct {
 	loadpointData    LoadpointData
 	calcblock        bool
 	blockMeterUpdate bool
-	sitePower        float64
 	//maxBatteryPower     float64
 }
 
@@ -829,7 +828,7 @@ func (site *Site) CalculateValues() {
 	site.calcblock = true
 	var maxPowerLoadpointsPrio [maxPrio]float64   //Variable for all max Powers from active Loadpoints in each Priority
 	var minPowerLoadpointsPrio [maxPrio]float64   //Variable for all min Powers from active Loadpoints in each Priority
-	var countLoadpointsPrio [maxPrio]int          //Variable wich counts active Loadpoints in each Priority
+	var countLoadpointsPrio [maxPrio]int          //Variable which counts active Loadpoints in each Priority
 	var minPowerPVLoadpointsPrio [maxPrio]float64 //Variable for all min Powers from active Loadpoints in PVMode in each Priority
 	totalChargePower := 0.0                       //Variable for total Chargepower of all Loadpoints
 	countLoadpoints := 0                          //Variable to count all Loadpoints
@@ -1142,13 +1141,13 @@ func (site *Site) CheckMeters(chargePower float64) {
  *	Parameter[in]:
  *	pv              float64     PVPower
  *	setpoint        float64     Setpoint to reach
- *	flexPower       float64     flexibel Power
+ *	flexPower       float64     flexible Power
  *
  *	Returnvalue:
  *	-----
  *
  *	Controller to regulate free Power with pv,
- *	setpint(point to reach) and flexibel Power.
+ *	setpint(point to reach) and flexible Power.
  *	The free Power is trying to reach the setpoint.
  *	Effective Formula:
  *	freePower = KI * (-pv + setpoint + flexPower) + freePowerold
@@ -1197,7 +1196,7 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
  * 	   The setpoint corresponds to the minimum plus the surplus, all controllable loads have reached their maximum
  */
 func (site *Site) CalculateSetpoint(flexpower, minpower, pv, maxpower, setpower float64) float64 {
-	setpoint := 0.0
+	var setpoint float64
 	if (flexpower+minpower) <= pv && maxpower <= setpower {
 		setpoint = pv - flexpower
 	} else {
@@ -1261,7 +1260,6 @@ func (site *Site) calculatePowerForLoadpointsInPrio(prio int, freePower *float64
 	powerForLoadpointOverall := 0.0
 	if *freePower > maxPowerLoadpointsPrio[prio] {
 		mode = 1
-
 	} else if *freePower > minPowerPVLoadpointsPrio[prio] {
 		mode = 2
 		powerForLoadpointOverall = (*freePower + minPowerLoadpointsPrio[prio]) / float64(countLoadpointsPrio[prio])
@@ -1359,7 +1357,7 @@ func (site *Site) checkCircuit(circuit api.Circuit, powerForLoadpointTmp map[*Lo
  *	prio                   int                       given Priority
  *	powerForLoadpointTmp   map[*Loadpoint]float64    List of Power for all Loadpoints
  *	Returnvalue:
- *	reducedPower           float64                   Power wich was reduced
+ *	reducedPower           float64                   Power which was reduced
  */
 func (site *Site) reduceCircuitPower(circuit api.Circuit, reducePower, countLPPrio float64, prio int, powerForLoadpointTmp map[*Loadpoint]float64) float64 {
 	reducededPower := 0.0
