@@ -17,7 +17,6 @@ import (
 	"github.com/evcc-io/evcc/provider/mqtt"
 	"github.com/evcc-io/evcc/push"
 	"github.com/evcc-io/evcc/server"
-	"github.com/evcc-io/evcc/server/updater"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/pipe"
@@ -274,10 +273,9 @@ func runRoot(cmd *cobra.Command, args []string) {
 		once.Do(func() { close(stopC) }) // signal loop to end
 	})
 
-	// show and check version, reduce api load during development
+	// show version
 	if server.Version != server.DevVersion {
 		valueChan <- util.Param{Key: keys.Version, Val: server.FormattedVersion()}
-		go updater.Run(log, httpd, valueChan)
 	}
 
 	// setup site
