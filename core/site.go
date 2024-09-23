@@ -1198,7 +1198,7 @@ func (site *Site) PIDController(pv, setpoint, flexPower float64) {
  */
 func (site *Site) CalculateSetpoint(flexpower, minpower, pv, maxpower, setpower float64) float64 {
 	setpoint := 0.0
-	if (flexpower+minpower) <= pv && maxpower == setpower {
+	if (flexpower+minpower) <= pv && maxpower <= setpower {
 		setpoint = pv - flexpower
 	} else {
 		if minpower <= pv { // Mittlerer Bereich
@@ -1426,11 +1426,11 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
  *	get the Power from the Map and Update the Loadpoint.
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
-	lp.GetDataFromLoadpoint()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
 	lp.Update(loadpointPower, site.gridPower)
+	lp.GetDataFromLoadpoint()
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread
