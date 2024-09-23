@@ -97,7 +97,7 @@ func (site *Site) AppendPVMeter(meter api.Meter, ref string) {
 	site.Lock()
 	defer site.Unlock()
 
-	site.pvMeters[ref] = meter //TODO check that ref is new????
+	site.pvMeters[ref] = meter
 }
 
 func (site *Site) DeletePVMeter(ref string) {
@@ -144,7 +144,7 @@ func (site *Site) AppendBatteryMeter(meter api.Meter, ref string) {
 	site.Lock()
 	defer site.Unlock()
 
-	site.batteryMeters[ref] = meter //TODO check that ref is new????
+	site.batteryMeters[ref] = meter
 }
 
 func (site *Site) DeleteBatteryMeter(ref string) {
@@ -175,7 +175,7 @@ func (site *Site) AppendAuxMeter(meter api.Meter, ref string) {
 	site.Lock()
 	defer site.Unlock()
 
-	site.auxMeters[ref] = meter //TODO check that ref is new????
+	site.auxMeters[ref] = meter
 }
 
 func (site *Site) DeleteAuxMeter(ref string) {
@@ -205,7 +205,7 @@ func (site *Site) AppendExtMeter(meter api.Meter, ref string) {
 	site.Lock()
 	defer site.Unlock()
 
-	site.extMeters[ref] = meter //TODO check that ref is new????
+	site.extMeters[ref] = meter
 }
 
 func (site *Site) DeleteExtMeter(ref string) {
@@ -247,7 +247,7 @@ func (site *Site) AppendLoadpoint(instance any) {
 	lp.Prepare(lpUIChan, lpPushChan, site.lpUpdateChan)
 }
 
-func (site *Site) RemoveLoadpoint(ref string) { // TODO Identify Loadpoint by ChargerRef
+func (site *Site) RemoveLoadpoint(ref string) {
 	site.Lock()
 	defer site.Unlock()
 	var index int
