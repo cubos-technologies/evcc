@@ -219,7 +219,6 @@ func (m *Client) listen(topic string) paho.Token {
 		payload := string(msg.Payload())
 		m.log.TRACE.Printf("recv %s: '%v'", topic, payload)
 		m.log.TRACE.Printf("full topic: '%s'", string(msg.Topic()))
-		//if len(payload) > 0 {
 		m.mux.Lock()
 		callbacks := m.listener[topic]
 		m.mux.Unlock()
@@ -227,7 +226,6 @@ func (m *Client) listen(topic string) paho.Token {
 		for _, cb := range callbacks {
 			cb(payload, msg.Topic())
 		}
-		//}
 	})
 	return token
 }
