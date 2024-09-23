@@ -1647,7 +1647,6 @@ func (lp *Loadpoint) SetEnvironment(greenShare float64, effPrice, effCo2 *float6
 
 // GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
 func (lp *Loadpoint) GetDataFromLoadpoint() {
-	lp.isUpdated = false
 	lp.UpdateChargePowerAndCurrents()
 
 	lp.processTasks()
@@ -1669,6 +1668,7 @@ func (lp *Loadpoint) GetDataFromLoadpoint() {
 	if err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
+		lp.isUpdated = true
 		return
 	}
 
@@ -1703,8 +1703,10 @@ func (lp *Loadpoint) GetDataFromLoadpoint() {
 	if err := lp.syncCharger(); err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
+		lp.isUpdated = true
 		return
 	}
+	lp.isUpdated = true
 }
 
 func (lp *Loadpoint) IsUpdated() bool {
@@ -1719,12 +1721,11 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 
 // Update is the main control function. It reevaluates meters and charger state
 func (lp *Loadpoint) Update(freePower, sitePower float64) {
-
+	lp.isUpdated = false
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
 	if err != nil {
 		lp.log.ERROR.Println(err)
-		lp.isUpdated = true
 		return
 	}
 	// track if remote disabled is actually active
@@ -1813,5 +1814,4 @@ func (lp *Loadpoint) Update(freePower, sitePower float64) {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
 	}
-	lp.isUpdated = true
 }
