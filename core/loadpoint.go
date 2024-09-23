@@ -1636,7 +1636,6 @@ func (lp *Loadpoint) SetEnvironment(greenShare float64, effPrice, effCo2 *float6
 
 // GetDataFromLoadpoint is the Main Function to get the Data from the Loadpoint
 func (lp *Loadpoint) GetDataFromLoadpoint() {
-	//lp.isUpdated = false
 	lp.UpdateChargePowerAndCurrents()
 
 	lp.processTasks()
@@ -1706,7 +1705,6 @@ func (lp *Loadpoint) Update(freePower, sitePower float64) {
 	welcomeCharge, err := lp.updateChargerStatus()
 	if err != nil {
 		lp.log.ERROR.Println(err)
-		//lp.isUpdated = true
 		return
 	}
 	// track if remote disabled is actually active
@@ -1794,5 +1792,4 @@ func (lp *Loadpoint) Update(freePower, sitePower float64) {
 	if err != nil {
 		lp.log.ERROR.Println(err)
 	}
-	//lp.isUpdated = true
 }
