@@ -300,7 +300,7 @@ func runRoot(cmd *cobra.Command, args []string) {
 		log.FATAL.Println(err)
 		log.FATAL.Printf("will attempt restart in: %v", rebootDelay)
 		// Send info about failed start on MQTT
-		if conf.Mqtt.Broker != "" && mqtt.Instance.Client.IsConnected() {
+		if mqtt.Instance != nil && mqtt.Instance.Client.IsConnected() {
 			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/status", conf.Mqtt.Topic), 1, true, "offline")
 			mqtt.Instance.Client.Publish(fmt.Sprintf("%s/error", conf.Mqtt.Topic), 1, true, err.Error())
 		}
