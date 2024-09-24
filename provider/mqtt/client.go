@@ -203,7 +203,7 @@ func (m *Client) ListenSetter(topic string, callback func(string) error) error {
 
 // ListenSetter but returns the full topic as well
 func (m *Client) ListenSetterWithTopic(topic string, callback func(string, string) error) error {
-	topic += "/set"
+	//topic += "/set"
 	err := m.Listen(topic, func(payload string, full_topic string) {
 		if err := callback(payload, full_topic); err != nil {
 			m.log.ERROR.Printf("set %s: %v", full_topic, err)
