@@ -218,7 +218,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var err error
 			if err = json.NewDecoder(msg).Decode(&req2); err == nil {
 				for cubos_id, req := range req2 {
-					if err = MQTTConfigHandler(req, site, full_topic+cubos_id+"/config"); err != nil {
+					if err = MQTTConfigHandler(req, site, full_topic+"/"+cubos_id+"/config"); err != nil {
 						errorTopic := full_topic + "/error"
 						m.publish(errorTopic, false, err.Error())
 						//return err
@@ -251,7 +251,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 					mapvar["identifiers"] = indentifiers
 					mapvar["mode"] = modestring
 
-					if err = MQTTConfigHandler(mapvar, site, full_topic+req.RFIDTag+"/config"); err != nil {
+					if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config"); err != nil {
 						errorTopic := full_topic + "/error"
 						m.publish(errorTopic, false, err.Error())
 						//return err
