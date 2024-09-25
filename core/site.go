@@ -35,35 +35,35 @@ import (
 
 // meterMeasurement is used as slice element for publishing structured data
 type meterMeasurement struct {
-	Power          int   `json:"P"`
-	Energy         int   `json:"EPos"`
-	EnergyNegative int   `json:"ENeg"`
-	IL1            int   `json:"IL1"`
-	IL2            int   `json:"IL2"`
-	IL3            int   `json:"IL3"`
-	UL1            int   `json:"UL1"`
-	UL2            int   `json:"UL2"`
-	UL3            int   `json:"UL3"`
-	Timestamp      int64 `json:"timestamp"`
+	Power          int    `json:"P"`
+	Energy         uint64 `json:"EPos"`
+	EnergyNegative uint64 `json:"ENeg"`
+	IL1            int    `json:"IL1"`
+	IL2            int    `json:"IL2"`
+	IL3            int    `json:"IL3"`
+	UL1            int    `json:"UL1"`
+	UL2            int    `json:"UL2"`
+	UL3            int    `json:"UL3"`
+	Timestamp      int64  `json:"timestamp"`
 }
 
 type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power          int   `json:"P"`
-	Energy         int   `json:"EPos"`
-	EnergyNegative int   `json:"ENeg"`
-	Soc            int   `json:"soc"`
-	Capacity       int   `json:"capacity"`
-	Controllable   bool  `json:"controllable"`
-	IL1            int   `json:"IL1"`
-	IL2            int   `json:"IL2"`
-	IL3            int   `json:"IL3"`
-	UL1            int   `json:"UL1"`
-	UL2            int   `json:"UL2"`
-	UL3            int   `json:"UL3"`
-	Timestamp      int64 `json:"timestamp"`
+	Power          int    `json:"P"`
+	Energy         uint64 `json:"EPos"`
+	EnergyNegative uint64 `json:"ENeg"`
+	Soc            int    `json:"soc"`
+	Capacity       int    `json:"capacity"`
+	Controllable   bool   `json:"controllable"`
+	IL1            int    `json:"IL1"`
+	IL2            int    `json:"IL2"`
+	IL3            int    `json:"IL3"`
+	UL1            int    `json:"UL1"`
+	UL2            int    `json:"UL2"`
+	UL3            int    `json:"UL3"`
+	Timestamp      int64  `json:"timestamp"`
 }
 
 type BatteryMeasurement = batteryMeasurement
@@ -558,7 +558,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 		if energyMeter, ok := meter.(api.MeterEnergy); err == nil && ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				mm.Energy = int(energy * 10)
+				mm.Energy = uint64(energy * 10)
 				site.log.DEBUG.Printf("aux energy %s: %.0fW", ref, energy)
 				meterOnline = true
 			} else {
@@ -571,7 +571,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 		if energyMeter, ok := meter.(api.ExportEnergy); err == nil && ok {
 			exportEnergy, err := energyMeter.ExportEnergy()
 			if err == nil {
-				mm.EnergyNegative = int(exportEnergy * 10)
+				mm.EnergyNegative = uint64(exportEnergy * 10)
 				site.log.DEBUG.Printf("aux export energy %s: %.0fW", ref, exportEnergy)
 				meterOnline = true
 			} else {
@@ -722,8 +722,8 @@ func (site *Site) updatePvMeters() {
 
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:          int(power),
-			Energy:         int(energy * 10),
-			EnergyNegative: int(exportEnergy * 10),
+			Energy:         uint64(energy * 10),
+			EnergyNegative: uint64(exportEnergy * 10),
 			IL1:            int(currents[0] * 1000),
 			IL2:            int(currents[1] * 1000),
 			IL3:            int(currents[2] * 1000),
@@ -830,8 +830,8 @@ func (site *Site) updateExtMeters() {
 
 		mmm[ref+"/record"] = meterMeasurement{
 			Power:          int(power),
-			Energy:         int(energy * 10),
-			EnergyNegative: int(exportEnergy * 10),
+			Energy:         uint64(energy * 10),
+			EnergyNegative: uint64(exportEnergy * 10),
 			IL1:            int(currents[0] * 1000),
 			IL2:            int(currents[1] * 1000),
 			IL3:            int(currents[2] * 1000),
@@ -972,8 +972,8 @@ func (site *Site) updateBatteryMeters() error {
 
 		mmm[ref+"/record"] = batteryMeasurement{
 			Power:          int(power),
-			Energy:         int(energy * 10),
-			EnergyNegative: int(exportEnergy * 10),
+			Energy:         uint64(energy * 10),
+			EnergyNegative: uint64(exportEnergy * 10),
 			Soc:            int(batSoc),
 			Capacity:       int(capacity),
 			Controllable:   controllable,
@@ -1091,7 +1091,7 @@ func (site *Site) updateGridMeter() error {
 		if energyMeter, ok := meter.(api.MeterEnergy); ok {
 			energy, err := energyMeter.TotalEnergy()
 			if err == nil {
-				mm.Energy = int(energy * 10)
+				mm.Energy = uint64(energy * 10)
 				site.publish(keys.GridEnergy, energy)
 				site.log.DEBUG.Printf("grid energy: %.0fWh", energy)
 				meterOnline = true
@@ -1106,7 +1106,7 @@ func (site *Site) updateGridMeter() error {
 		if exportMeter, ok := meter.(api.ExportEnergy); ok {
 			exportEnergy, err := exportMeter.ExportEnergy()
 			if err == nil {
-				mm.EnergyNegative = int(exportEnergy * 10)
+				mm.EnergyNegative = uint64(exportEnergy * 10)
 				site.log.DEBUG.Printf("grid export energy: %.0fWh", exportEnergy)
 				meterOnline = true
 			} else {
