@@ -125,6 +125,7 @@ type LoadpointData struct {
 	circuitMinPower       map[api.Circuit]float64
 	circuitList           []api.Circuit
 	muLp                  sync.Mutex
+	UpdateBlock           sync.WaitGroup
 }
 
 const (
@@ -258,7 +259,8 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		powerForLoadpointSet:  make(map[*Loadpoint]float64),
 		prevError:             0.0,
 		freePowerPID:          0.0,
-		circuitMinPower:       make(map[api.Circuit]float64)}
+		circuitMinPower:       make(map[api.Circuit]float64),
+	}
 	site.calcblock = false
 	site.blockMeterUpdate = false
 
@@ -908,6 +910,7 @@ func (site *Site) CalculateValues() {
 	freePower := -site.loadpointData.freePowerPID
 	site.publish("freePower", freePower)
 
+	site.loadpointData.UpdateBlock.Add(1)
 	// Power calculation without Circuit
 	powerForLoadpointTmp = site.CalculatePowerForEachLoadpoint(&freePower, powerForLoadpointTmp, &maxPowerLoadpointsPrio, &minPowerPVLoadpointsPrio, &minPowerLoadpointsPrio, &countLoadpointsPrio)
 
@@ -925,6 +928,7 @@ func (site *Site) CalculateValues() {
 		site.loadpointData.powerForLoadpointSet[lp] = powerForLoadpointTmp[lp]
 	}
 	site.loadpointData.muLp.Unlock()
+	site.loadpointData.UpdateBlock.Done()
 
 	// Update Health and Stats of Site
 	site.Health.Update()
@@ -1292,8 +1296,11 @@ func (site *Site) calculatePowerForLoadpointsInPrio(prio int, freePower *float64
 				}
 			}
 		}
-		powerForLoadpointTmp[lp] += powerForLoadpoint
 		*freePower -= powerForLoadpoint
+		if chargerMode == api.ModeMinPV {
+			powerForLoadpoint += minPowerChargepoint
+		}
+		powerForLoadpointTmp[lp] = powerForLoadpoint
 	}
 	return powerForLoadpointTmp
 }
@@ -1427,6 +1434,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
+	site.loadpointData.UpdateBlock.Wait()
 	lp.Update(loadpointPower, site.gridPower)
 	lp.GetDataFromLoadpoint()
 }
