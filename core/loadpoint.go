@@ -1283,7 +1283,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, freePower, sitePower floa
 	}
 	targetCurrent := max(-powerToCurrent(-freePower, activePhases), 0)
 
-	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
+	lp.log.DEBUG.Printf("OlliDebug pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
 
 	if mode == api.ModePV && lp.enabled && targetCurrent < minCurrent {
 		projectedSitePower := sitePower
@@ -1699,7 +1699,7 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(freePower, sitePower float64) {
+func (lp *Loadpoint) Update(targetCurrent float64) {
 	lp.isUpdated = false
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
@@ -1756,7 +1756,6 @@ func (lp *Loadpoint) Update(freePower, sitePower float64) {
 		err = lp.fastCharging()
 
 	case mode == api.ModeMinPV || mode == api.ModePV:
-		targetCurrent := lp.pvMaxCurrent(mode, freePower, sitePower)
 		//targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()

@@ -911,6 +911,7 @@ func (site *Site) CalculateValues() {
 	site.publish("freePower", freePower)
 
 	site.loadpointData.UpdateBlock.Add(1)
+
 	// Power calculation without Circuit
 	powerForLoadpointTmp = site.CalculatePowerForEachLoadpoint(&freePower, powerForLoadpointTmp, &maxPowerLoadpointsPrio, &minPowerPVLoadpointsPrio, &minPowerLoadpointsPrio, &countLoadpointsPrio)
 
@@ -925,7 +926,12 @@ func (site *Site) CalculateValues() {
 	//transfer all Data from temporary Variable in LoadpointsPower
 	site.loadpointData.muLp.Lock()
 	for _, lp := range site.loadpoints {
-		site.loadpointData.powerForLoadpointSet[lp] = powerForLoadpointTmp[lp]
+		mode := lp.GetMode()
+		if mode == api.ModeMinPV || mode == api.ModePV {
+			site.loadpointData.powerForLoadpointSet[lp] = lp.pvMaxCurrent(lp.GetMode(), powerForLoadpointTmp[lp], site.gridPower)
+		} else {
+			site.loadpointData.powerForLoadpointSet[lp] = powerForLoadpointTmp[lp]
+		}
 	}
 	site.loadpointData.muLp.Unlock()
 	site.loadpointData.UpdateBlock.Done()
@@ -1431,11 +1437,11 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
  *	get the Power from the Map and Update the Loadpoint.
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
+	site.loadpointData.UpdateBlock.Wait()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	site.loadpointData.UpdateBlock.Wait()
-	lp.Update(loadpointPower, site.gridPower)
+	lp.Update(loadpointPower)
 	lp.GetDataFromLoadpoint()
 }
 
