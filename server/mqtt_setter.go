@@ -11,6 +11,11 @@ type setter struct {
 	fun   func(string) error
 }
 
+type setterWithTopic struct {
+	topic string
+	fun   func(string, string) error
+}
+
 func setterFunc[T any](conv func(string) (T, error), set func(T) error) func(string) error {
 	return func(payload string) error {
 		val, err := conv(payload)

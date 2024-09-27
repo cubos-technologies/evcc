@@ -6,11 +6,10 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/evcc-io/evcc/api"
-	"github.com/evcc-io/evcc/core"
+	"github.com/evcc-io/evcc/core/keys"
 	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/core/vehicle"
@@ -26,8 +25,13 @@ type MQTT struct {
 	publisher func(topic string, retained bool, payload string)
 }
 
+type Userinfo struct {
+	RFIDTag         string `json:"rfid_tag"`
+	ChargingProfile int    `json:"charging_profile"`
+}
+
 // NewMQTT creates MQTT server
-func NewMQTT(root string, site site.API) (*MQTT, error) {
+func NewMQTT(root string, site site.API, shutdown func(), valueChan chan<- util.Param) (*MQTT, error) {
 	m := &MQTT{
 		log:     util.NewLogger("mqtt"),
 		Handler: mqtt.Instance,
@@ -35,9 +39,9 @@ func NewMQTT(root string, site site.API) (*MQTT, error) {
 	}
 	m.publisher = m.publishString
 
-	err := m.Handler.Cleanup(m.root, true)
+	var err error
 	if err == nil {
-		err = m.Listen(site)
+		err = m.Listen(site, shutdown, valueChan)
 	}
 	if err != nil {
 		err = fmt.Errorf("mqtt: %w", err)
@@ -97,15 +101,10 @@ func (m *MQTT) publishComplex(topic string, retained bool, payload interface{}) 
 		}
 
 	case reflect.Struct:
-		val := reflect.ValueOf(payload)
-		typ := val.Type()
-
-		// loop struct
-		for i := 0; i < typ.NumField(); i++ {
-			if f := typ.Field(i); f.IsExported() {
-				n := f.Name
-				m.publishComplex(fmt.Sprintf("%s/%s", topic, strings.ToLower(n[:1])+n[1:]), retained, val.Field(i).Interface())
-			}
+		// publish struct as json
+		b, err := json.Marshal(payload)
+		if err == nil {
+			m.publishString(topic, retained, string(b))
 		}
 
 	case reflect.Pointer:
@@ -149,8 +148,23 @@ func (m *MQTT) publish(topic string, retained bool, payload interface{}) {
 	m.publishComplex(topic, retained, payload)
 }
 
-func (m *MQTT) Listen(site site.API) error {
+func (m *MQTT) Listen(site site.API, shutdown func(), valueChan chan<- util.Param) error {
 	if err := m.listenSiteSetters(m.root+"/site", site); err != nil {
+		return err
+	}
+
+	for _, s := range []setterWithTopic{
+		{m.root + "/shutdown", func(payload string, full_topic string) error {
+			shutdown()
+			return nil
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(s.topic, s.fun); err != nil {
+			return err
+		}
+	}
+
+	if err := m.listenConfig(m.root, site, valueChan); err != nil {
 		return err
 	}
 
@@ -170,6 +184,120 @@ func (m *MQTT) Listen(site site.API) error {
 		}
 	}
 
+	return nil
+}
+
+// "interval":           {"POST", "/interval/{value:[0-9.]+}", settingsSetDurationHandler(keys.Interval)},
+func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.Param) error {
+	for _, s := range []setterWithTopic{
+		{"/energymeter/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/user/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/users", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req2 map[string]map[string]any
+			var err error
+			if err = json.NewDecoder(msg).Decode(&req2); err == nil {
+				for cubos_id, req := range req2 {
+					if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
+						errorTopic := full_topic[:len(full_topic)-3] + "error"
+						m.publish(errorTopic, false, err.Error())
+						//return err
+					}
+				}
+			} else { //legacy
+				var req3 []Userinfo
+				err = json.Unmarshal([]byte(payload), &req3)
+				if err == nil {
+					for _, req := range req3 {
+						mapvar := make(map[string]any)
+						var modestring = "minpv"
+						switch req.ChargingProfile {
+						case 0:
+							modestring = "now"
+						case 1:
+							modestring = "minpv"
+						}
+						var indentifiers []string
+						indentifiers = append(indentifiers, req.RFIDTag)
+						mapvar["title"] = req.RFIDTag
+						mapvar["template"] = "offline"
+						mapvar["identifiers"] = indentifiers
+						mapvar["mode"] = modestring
+
+						if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config/set"); err != nil {
+							errorTopic := full_topic[:len(full_topic)-3] + "error"
+							m.publish(errorTopic, false, err.Error())
+							//return err
+						}
+
+					}
+				}
+			}
+			return err
+		}},
+		{"/user/default", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			req["cubos_id"] = "default"
+			req["template"] = "offline"
+			req["title"] = "Standardfahrzeug"
+			req["identifiers"] = "[default]"
+			if err := MQTTConfigHandler(req, site, full_topic+"/set"); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+		{"/config/mqtt", func(payload string, full_topic string) error {
+			if len(payload) != 0 {
+				settingsSetMQTTConfig(payload, valueChan)
+			} else {
+				settingsDeleteMQTTConfig(valueChan)
+			}
+			return nil
+		}},
+		{"/config/interval", func(payload string, full_topic string) error {
+			settingsSetDurationHandlerMQTT(payload, keys.Interval)
+			return nil
+		}},
+		{"/chargepoint/+/config", func(payload string, full_topic string) error {
+			msg := strings.NewReader(payload)
+			var req map[string]any
+			json.NewDecoder(msg).Decode(&req)
+			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
+				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				m.publish(errorTopic, false, err.Error())
+				return err
+			}
+			return nil
+		}},
+	} {
+		if err := m.Handler.ListenSetterWithTopic(topic+s.topic, s.fun); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -200,6 +328,7 @@ func (m *MQTT) listenLoadpointSetters(topic string, site site.API, lp loadpoint.
 		{"/mode", setterFunc(api.ChargeModeString, pass(lp.SetMode))},
 		{"/phases", intSetter(lp.SetPhases)},
 		{"/limitSoc", intSetter(pass(lp.SetLimitSoc))},
+		{"/priority", intSetter(pass(lp.SetPriority))},
 		{"/minCurrent", floatSetter(lp.SetMinCurrent)},
 		{"/maxCurrent", floatSetter(lp.SetMaxCurrent)},
 		{"/limitEnergy", floatSetter(pass(lp.SetLimitEnergy))},
@@ -262,95 +391,9 @@ func (m *MQTT) listenVehicleSetters(topic string, v vehicle.API) error {
 	return nil
 }
 
-type EnergyMeterData struct {
-	Title     string `json:"-"`
-	Energy    int    `json:"E"`
-	Power     int    `json:"P"`
-	IL1       int    `json:"IL1"`
-	IL2       int    `json:"IL2"`
-	IL3       int    `json:"IL3"`
-	UL1       int    `json:"UL1"`
-	UL2       int    `json:"UL2"`
-	UL3       int    `json:"UL3"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-type BatteryMeterData struct {
-	Title     string `json:"-"`
-	Energy    int    `json:"E"`
-	Power     int    `json:"P"`
-	IL1       int    `json:"IL1"`
-	IL2       int    `json:"IL2"`
-	IL3       int    `json:"IL3"`
-	UL1       int    `json:"UL1"`
-	UL2       int    `json:"UL2"`
-	UL3       int    `json:"UL3"`
-	SOC       int    `json:"SOC"`
-	Capacity  int    `json:"C"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-type ChargepointData struct {
-	Title       string `json:"-"`
-	Energy      int    `json:"E"`
-	Power       int    `json:"P"`
-	IL1         int    `json:"IL1"`
-	IL2         int    `json:"IL2"`
-	IL3         int    `json:"IL3"`
-	UL1         int    `json:"UL1"`
-	UL2         int    `json:"UL2"`
-	UL3         int    `json:"UL3"`
-	ActiveRfid  string `json:"active_rfid_tag"`
-	HemsCurrent int    `json:"hems_current"`
-	Timestamp   int64  `json:"timestamp"`
-	Charging    bool   `json:"-"`
-	NotCharging int    `json:"-"`
-}
-
-type ChargepointError struct {
-	Error string `json:"error"`
-}
-
-type SafeMap struct {
-	m sync.Map
-}
-
-func (s *SafeMap) Load(key string) (interface{}, bool) {
-	return s.m.Load(key)
-}
-
-func (s *SafeMap) Store(key string, value interface{}) {
-	s.m.Store(key, value)
-}
-
-// var energymeters = &SafeMap{}
-var chargepoints = &SafeMap{}
-
-var gridMeterData EnergyMeterData
-
-func publishEnergyMeter(m *MQTT, energyMeterData EnergyMeterData) {
-	newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, energyMeterData.Title)
-	payload, err := json.Marshal(energyMeterData)
-	if err == nil {
-		m.publishString(newTopic, false, string(payload[:]))
-	}
-}
-
 // Run starts the MQTT publisher for the MQTT API
 func (m *MQTT) Run(site site.API, in <-chan util.Param) {
-	// number of loadpoints
-	topic := fmt.Sprintf("%s/loadpoints", m.root)
-	m.publish(topic, true, len(site.Loadpoints()))
-
-	// number of vehicles
-	topic = fmt.Sprintf("%s/vehicles", m.root)
-	m.publish(topic, true, len(site.Vehicles().Settings()))
-
-	for i := 0; i < 10; i++ {
-		m.publish(fmt.Sprintf("%s/site/pv/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/battery/%d", m.root, i), true, nil)
-		m.publish(fmt.Sprintf("%s/site/vehicles/%d", m.root, i), true, nil)
-	}
+	var topic string
 
 	// alive indicator
 	var updated time.Time
@@ -358,162 +401,13 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 	// publish
 	for p := range in {
 		switch {
-		case p.Loadpoint != nil:
-			id := *p.Loadpoint + 1
-
-			chargepoint, _ := (chargepoints.Load(strconv.Itoa(id)))
-			var chargepointData ChargepointData
-			if chargepoint != nil {
-				chargepointData = chargepoint.(ChargepointData)
-			}
-
-			switch p.Key {
-			case "title":
-				s, ok := p.Val.(string)
-				if ok {
-					chargepointData.Title = s
-				}
-			case "chargedEnergy":
-				chargepointData.Energy = int(p.Val.(float64))
-			case "chargePower":
-				chargepointData.Power = int(p.Val.(float64))
-			case "chargeCurrents":
-				chargepointData.IL1 = int(p.Val.([]float64)[0] * 1000)
-				chargepointData.IL2 = int(p.Val.([]float64)[1] * 1000)
-				chargepointData.IL3 = int(p.Val.([]float64)[2] * 1000)
-			case "chargeVoltages":
-				chargepointData.UL1 = int(p.Val.([]float64)[0] * 1000)
-				chargepointData.UL2 = int(p.Val.([]float64)[1] * 1000)
-				chargepointData.UL3 = int(p.Val.([]float64)[2] * 1000)
-			case "chargeCurrent":
-				chargepointData.HemsCurrent = int(p.Val.(float64))
-			case "vehicleIdentity":
-				chargepointData.ActiveRfid = p.Val.(string)
-			case "charging":
-				chargepointData.Charging = p.Val.(bool)
-			case "error":
-				var error ChargepointError
-				error.Error = fmt.Sprint(p.Val)
-				var errorJson, _ = json.Marshal(error)
-				// TODO: retain error?
-				m.publishString(fmt.Sprintf("%s/chargepoint/%s/error", m.root, chargepointData.Title), true, string(errorJson[:]))
-				// Skip to publishing the original MQTT topics, can be removed later
-				goto skipto
-			default:
-				topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
-				// Skip to publishing the original MQTT topics, can be removed later
-				goto skipto
-			}
-			chargepointData.Timestamp = time.Now().Unix()
-
-			newTopic := fmt.Sprintf("%s/chargepoint/%s/record", m.root, chargepointData.Title)
-			payload, err := json.Marshal(chargepointData)
-			if err == nil && chargepointData.Title != "" {
-				if chargepointData.Charging {
-					chargepointData.NotCharging = 0
-				} else if !chargepointData.Charging && chargepointData.NotCharging <= 5 {
-					chargepointData.NotCharging++
-				}
-				if chargepointData.NotCharging <= 5 {
-					m.publishString(newTopic, false, string(payload[:]))
-				}
-			}
-			chargepoints.Store(strconv.Itoa(id), chargepointData)
-			topic = fmt.Sprintf("%s/loadpoints/%d/%s", m.root, id, p.Key)
-		case p.Key == "vehicles":
-			topic = fmt.Sprintf("%s/vehicles", m.root)
-		case p.Key == "gridPower":
-			gridMeterData.Title = "grid"
-			power, ok := p.Val.(float64)
-			if ok {
-				gridMeterData.Power = int(power)
-				gridMeterData.Timestamp = time.Now().Unix()
-				publishEnergyMeter(m, gridMeterData)
-			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
-		case p.Key == "gridEnergy":
-			gridMeterData.Title = "grid"
-			energy, ok := p.Val.(float64)
-			if ok {
-				gridMeterData.Energy = int(energy)
-				gridMeterData.Timestamp = time.Now().Unix()
-				publishEnergyMeter(m, gridMeterData)
-			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
-		case p.Key == "gridCurrents":
-			gridMeterData.Title = "grid"
-			currents, ok := p.Val.([]float64)
-			if ok {
-				gridMeterData.IL1 = int(currents[0] * 1000)
-				gridMeterData.IL2 = int(currents[1] * 1000)
-				gridMeterData.IL3 = int(currents[2] * 1000)
-				gridMeterData.Timestamp = time.Now().Unix()
-				publishEnergyMeter(m, gridMeterData)
-			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
-		case p.Key == "gridVoltages":
-			gridMeterData.Title = "grid"
-			voltages, ok := p.Val.([]float64)
-			if ok {
-				gridMeterData.UL1 = int(voltages[0] * 1000)
-				gridMeterData.UL2 = int(voltages[1] * 1000)
-				gridMeterData.UL3 = int(voltages[2] * 1000)
-				gridMeterData.Timestamp = time.Now().Unix()
-				publishEnergyMeter(m, gridMeterData)
-			}
-			// for original MQTT values, can be removed later
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
+		case p.Key == keys.Meters:
+			topic = fmt.Sprintf("%s/%s", m.root, keys.Meters)
+		case p.Key == keys.Chargepoints:
+			topic = fmt.Sprintf("%s/%s", m.root, keys.Chargepoints)
 		default:
-			topic = fmt.Sprintf("%s/site/%s", m.root, p.Key)
-			if p.Key == "pv" || p.Key == "charge" || p.Key == "aux" || p.Key == "battery" {
-				if meters, ok := p.Val.([]core.MeterMeasurement); ok {
-					for _, meter := range meters {
-						var energyMeterData EnergyMeterData
-						energyMeterData.Power = int(meter.Power)
-						energyMeterData.Energy = int(meter.Energy)
-						energyMeterData.IL1 = int(meter.Currents[0] * 1000)
-						energyMeterData.IL2 = int(meter.Currents[1] * 1000)
-						energyMeterData.IL3 = int(meter.Currents[2] * 1000)
-						energyMeterData.UL1 = int(meter.Voltages[0] * 1000)
-						energyMeterData.UL2 = int(meter.Voltages[1] * 1000)
-						energyMeterData.UL3 = int(meter.Voltages[2] * 1000)
-
-						// Create Title from meter type and id
-						energyMeterData.Title = fmt.Sprintf("%s-%s", p.Key, meter.Id)
-
-						energyMeterData.Timestamp = time.Now().Unix()
-						publishEnergyMeter(m, energyMeterData)
-					}
-				} else if batteries, ok := p.Val.([]core.BatteryMeasurement); ok {
-					for _, battery := range batteries {
-						var batteryMeterData BatteryMeterData
-						batteryMeterData.Power = int(battery.Power)
-						batteryMeterData.Energy = int(battery.Energy)
-
-						// Not supported yet
-						batteryMeterData.IL1 = 0
-						batteryMeterData.IL2 = 0
-						batteryMeterData.IL3 = 0
-						batteryMeterData.UL1 = -1
-						batteryMeterData.UL2 = -1
-						batteryMeterData.UL3 = -1
-
-						batteryMeterData.Title = fmt.Sprintf("%s-%s", p.Key, battery.Id)
-
-						batteryMeterData.Timestamp = time.Now().Unix()
-						newTopic := fmt.Sprintf("%s/energymeter/%s/record", m.root, batteryMeterData.Title)
-						payload, err := json.Marshal(batteryMeterData)
-						if err == nil {
-							m.publishString(newTopic, false, string(payload[:]))
-						}
-					}
-				}
-			}
+			continue
 		}
-	skipto:
 
 		// alive indicator
 		if time.Since(updated) > time.Second {
@@ -522,6 +416,6 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 		}
 
 		// value
-		m.publish(topic, true, p.Val)
+		m.publish(topic, false, p.Val)
 	}
 }
