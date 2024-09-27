@@ -1283,7 +1283,7 @@ func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, freePower, sitePower floa
 	}
 	targetCurrent := max(-powerToCurrent(-freePower, activePhases), 0)
 
-	lp.log.DEBUG.Printf("OlliDebug pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
+	lp.log.DEBUG.Printf("pv charge current: %.3gA = %.3gA (%.0fW @ %dp)", targetCurrent, effectiveCurrent, freePower, activePhases)
 
 	if mode == api.ModePV && lp.enabled && targetCurrent < minCurrent {
 		projectedSitePower := sitePower
