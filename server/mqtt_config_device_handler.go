@@ -9,6 +9,7 @@ import (
 	"github.com/evcc-io/evcc/charger"
 	"github.com/evcc-io/evcc/core"
 	"github.com/evcc-io/evcc/core/circuit"
+	"github.com/evcc-io/evcc/core/loadpoint"
 	"github.com/evcc-io/evcc/core/site"
 	"github.com/evcc-io/evcc/meter"
 	"github.com/evcc-io/evcc/util"
@@ -16,6 +17,21 @@ import (
 	"github.com/evcc-io/evcc/util/templates"
 	"github.com/evcc-io/evcc/vehicle"
 )
+
+type LoadpointDynamicConfig struct {
+	// dynamic config
+	Title          string   `json:"title,omitempty"`
+	Mode           string   `json:"mode,omitempty"`
+	Priority       int      `json:"priority,omitempty"`
+	Phases         int      `json:"phases"`
+	MinCurrent     float64  `json:"minCurrent,omitempty"`
+	MaxCurrent     float64  `json:"maxCurrent,omitempty"`
+	SmartCostLimit *float64 `json:"smartCostLimit,omitempty"`
+
+	Thresholds loadpoint.ThresholdsConfig `json:"thresholds,omitempty"`
+	Soc        loadpoint.SocConfig        `json:"soc,omitempty"`
+	Charger    string                     `json:"charger"`
+}
 
 type chargerConfig struct {
 	Type     string `json:"type"`
@@ -31,8 +47,8 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 	switch class {
 	case templates.Charger:
 		var cc struct {
-			chargerConfig `mapstructure:",squash"`
-			Other         map[string]any `mapstructure:",remain"`
+			LoadpointDynamicConfig `mapstructure:",squash"`
+			Other                  map[string]any `mapstructure:",remain"`
 		}
 		if err := util.DecodeOther(req, &cc); err != nil {
 			return err
@@ -40,7 +56,7 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 		//Helper to make struct to stringmap
 		var inInterface map[string]interface{}
 		var inrec []byte
-		inrec, err := json.Marshal(cc.chargerConfig)
+		inrec, err := json.Marshal(cc.Other)
 		if err != nil {
 			return err
 		}
@@ -54,17 +70,11 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 		}
 
 		charger := config.NameForID(conf.ID)
-		if cc.Other != nil {
-			cc.Other["charger"] = charger
-		} else {
-			cc.Other = map[string]interface{}{
-				"charger": charger,
-			}
+		cc.LoadpointDynamicConfig.Charger = charger
+		if cc.LoadpointDynamicConfig.Title == "" {
+			cc.LoadpointDynamicConfig.Title = cc.Other["cubos_id"].(string)
 		}
-		if _, found := cc.Other["title"].(string); !found {
-			cc.Other["title"] = cc.Cubos_id
-		}
-		if inrec, err = json.Marshal(cc.Other); err != nil {
+		if inrec, err = json.Marshal(cc.LoadpointDynamicConfig); err != nil {
 			return err
 		}
 
@@ -151,16 +161,17 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 	switch class {
 	case templates.Charger:
 		var cc struct {
-			chargerConfig `mapstructure:",squash"`
-			Other         map[string]any `mapstructure:",remain"`
+			LoadpointDynamicConfig `mapstructure:",squash"`
+			Other                  map[string]any `mapstructure:",remain"`
 		}
 		if err := util.DecodeOther(req, &cc); err != nil {
 			return err
 		}
+
 		//Helper to make struct to stringmap
 		var inInterface map[string]interface{}
 		var inrec []byte
-		inrec, err := json.Marshal(cc.chargerConfig)
+		inrec, err := json.Marshal(cc.Other)
 		if err != nil {
 			return err
 		}
@@ -173,17 +184,11 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 			return err
 		}
 		charger := config.NameForID(id)
-		if cc.Other != nil {
-			cc.Other["charger"] = charger
-		} else {
-			cc.Other = map[string]interface{}{
-				"charger": charger,
-			}
+		cc.LoadpointDynamicConfig.Charger = charger
+		if cc.LoadpointDynamicConfig.Title == "" {
+			cc.LoadpointDynamicConfig.Title = cc.Other["cubos_id"].(string)
 		}
-		if _, found := cc.Other["title"].(string); !found {
-			cc.Other["title"] = cc.Cubos_id
-		}
-		if inrec, err = json.Marshal(cc.Other); err != nil {
+		if inrec, err = json.Marshal(cc.LoadpointDynamicConfig); err != nil {
 			return err
 		}
 		MQTTdeleteLoadpointHandler(id)
