@@ -1350,12 +1350,7 @@ func (site *Site) CalculateValues() {
 	//transfer all Data from temporary Variable in LoadpointsPower
 	site.loadpointData.muLp.Lock()
 	for _, lp := range site.loadpoints {
-		mode := lp.GetMode()
-		if mode == api.ModeMinPV || mode == api.ModePV {
-			site.loadpointData.powerForLoadpointSet[lp] = lp.pvMaxCurrent(lp.GetMode(), powerForLoadpointTmp[lp], site.gridPower)
-		} else {
-			site.loadpointData.powerForLoadpointSet[lp] = powerForLoadpointTmp[lp]
-		}
+		site.loadpointData.powerForLoadpointSet[lp] = lp.pvMaxCurrent(lp.GetMode(), powerForLoadpointTmp[lp], site.gridPower)
 	}
 	site.loadpointData.muLp.Unlock()
 	site.loadpointData.UpdateBlock.Done()
@@ -1727,10 +1722,7 @@ func (site *Site) calculatePowerForLoadpointsInPrio(prio int, freePower *float64
 			}
 		}
 		*freePower -= powerForLoadpoint
-		if chargerMode == api.ModeMinPV {
-			powerForLoadpoint += minPowerChargepoint
-		}
-		powerForLoadpointTmp[lp] = powerForLoadpoint
+		powerForLoadpointTmp[lp] += powerForLoadpoint
 	}
 	return powerForLoadpointTmp
 }
