@@ -109,7 +109,7 @@ func MQTTnewDeviceHandler(req map[string]any, class templates.Class, site site.A
 func MQTTConfigHandler(req map[string]any, site site.API, topic string) error {
 	classstr := strings.Split(topic, "/")
 	var class templates.Class
-	switch classstr[len(classstr)-4] {
+	switch classstr[len(classstr)-3] {
 	case "energymeter":
 		class, _ = templates.ClassString("Meter")
 	case "chargepoint":
@@ -122,7 +122,7 @@ func MQTTConfigHandler(req map[string]any, site site.API, topic string) error {
 	var id int
 	var err error
 
-	cubosid := classstr[len(classstr)-3]
+	cubosid := classstr[len(classstr)-2]
 	var found bool
 	var payloadid any
 	if payloadid, found = req["cubos_id"]; found {
