@@ -1762,7 +1762,7 @@ func (lp *Loadpoint) publishNextSmartCostStart(smartCostNextStart time.Time) {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(freePower, sitePower float64) error {
+func (lp *Loadpoint) Update(targetCurrent float64) error {
 	lp.isUpdated = false
 	// read and publish status
 	welcomeCharge, err := lp.updateChargerStatus()
@@ -1819,7 +1819,6 @@ func (lp *Loadpoint) Update(freePower, sitePower float64) error {
 		err = lp.fastCharging()
 
 	case mode == api.ModeMinPV || mode == api.ModePV:
-		targetCurrent := lp.pvMaxCurrent(mode, freePower, sitePower)
 		//targetCurrent := sitePower
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()

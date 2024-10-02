@@ -169,6 +169,7 @@ type LoadpointData struct {
 	circuitMinPower       map[api.Circuit]float64
 	circuitList           []api.Circuit
 	muLp                  sync.Mutex
+	UpdateBlock           sync.WaitGroup
 }
 
 const (
@@ -327,7 +328,8 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 		powerForLoadpointSet:  make(map[*Loadpoint]float64),
 		prevError:             0.0,
 		freePowerPID:          0.0,
-		circuitMinPower:       make(map[api.Circuit]float64)}
+		circuitMinPower:       make(map[api.Circuit]float64),
+	}
 	site.calcblock = false
 	site.blockMeterUpdate = false
 
@@ -1332,6 +1334,8 @@ func (site *Site) CalculateValues() {
 	freePower := -site.loadpointData.freePowerPID
 	site.publish("freePower", freePower)
 
+	site.loadpointData.UpdateBlock.Add(1)
+
 	// Power calculation without Circuit
 	powerForLoadpointTmp = site.CalculatePowerForEachLoadpoint(&freePower, powerForLoadpointTmp, &maxPowerLoadpointsPrio, &minPowerPVLoadpointsPrio, &minPowerLoadpointsPrio, &countLoadpointsPrio)
 
@@ -1346,9 +1350,10 @@ func (site *Site) CalculateValues() {
 	//transfer all Data from temporary Variable in LoadpointsPower
 	site.loadpointData.muLp.Lock()
 	for _, lp := range site.loadpoints {
-		site.loadpointData.powerForLoadpointSet[lp] = powerForLoadpointTmp[lp]
+		site.loadpointData.powerForLoadpointSet[lp] = lp.pvMaxCurrent(lp.GetMode(), powerForLoadpointTmp[lp], site.gridPower)
 	}
 	site.loadpointData.muLp.Unlock()
+	site.loadpointData.UpdateBlock.Done()
 
 	// Update Health and Stats of Site
 	site.Health.Update()
@@ -1716,8 +1721,8 @@ func (site *Site) calculatePowerForLoadpointsInPrio(prio int, freePower *float64
 				}
 			}
 		}
-		powerForLoadpointTmp[lp] += powerForLoadpoint
 		*freePower -= powerForLoadpoint
+		powerForLoadpointTmp[lp] += powerForLoadpoint
 	}
 	return powerForLoadpointTmp
 }
@@ -1849,10 +1854,12 @@ func (site *Site) checkCircuitList(circuit api.Circuit, lp *Loadpoint) bool {
  */
 func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	var err error
+
+	site.loadpointData.UpdateBlock.Wait()
 	site.loadpointData.muLp.Lock()
 	loadpointPower := site.loadpointData.powerForLoadpointSet[lp]
 	site.loadpointData.muLp.Unlock()
-	lpUpdateError := lp.Update(loadpointPower, site.gridPower)
+	lpUpdateError := lp.Update(loadpointPower)
 	getDataError := lp.GetDataFromLoadpoint()
 	// set the err var to the first non-nil value
 	err = cmp.Or(getDataError, lpUpdateError)
