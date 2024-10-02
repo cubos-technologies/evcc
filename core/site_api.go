@@ -252,14 +252,18 @@ func (site *Site) RemoveLoadpoint(ref string) {
 	defer site.Unlock()
 	var index int
 	var topic string
+	var lplock *Loadpoint
 	for i, lp := range site.loadpoints {
 		if lp.ChargerRef == ref {
 			index = i
 			topic = lp.title
+			lplock = lp
 			break
 		}
 	}
 	site.loadpoints = append(site.loadpoints[:index], site.loadpoints[index+1:]...)
+	for !lplock.IsUpdated() {
+	}
 	site.publish(keys.Chargepoints, map[string]meterStatus{topic + "/status": {Status: "removed"}})
 }
 

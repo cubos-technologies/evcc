@@ -1869,6 +1869,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 	if err != nil {
 		site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "offline"}})
 		site.publish(keys.Chargepoints, map[string]meterError{ref + "/error": {Error: err.Error()}})
+		lp.UpdateFinished()
 		return
 	}
 
@@ -1901,6 +1902,7 @@ func (site *Site) UpdateLoadpoint(lp *Loadpoint) {
 
 	site.publish(keys.Chargepoints, map[string]meterStatus{ref + "/status": {Status: "online"}})
 	site.publish(keys.Chargepoints, map[string]ChargepointMeasurement{ref + "/record": cpm})
+	lp.UpdateFinished()
 }
 
 /*	Function to start each Updateprocess for Loadpoints in a Thread

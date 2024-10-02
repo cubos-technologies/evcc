@@ -195,7 +195,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				errorTopic := full_topic + "/error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
@@ -206,7 +206,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				errorTopic := full_topic + "/error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
@@ -218,53 +218,72 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var err error
 			if err = json.NewDecoder(msg).Decode(&req2); err == nil {
 				for cubos_id, req := range req2 {
-					if err = MQTTConfigHandler(req, site, full_topic[:len(full_topic)-3]+cubos_id+"/config/set"); err != nil {
-						errorTopic := full_topic[:len(full_topic)-3] + "error"
+					if err = MQTTConfigHandler(req, site, full_topic+"/"+cubos_id+"/config"); err != nil {
+						errorTopic := full_topic + "/error"
 						m.publish(errorTopic, false, err.Error())
 						//return err
-					}
-				}
-			} else { //legacy
-				var req3 []Userinfo
-				err = json.Unmarshal([]byte(payload), &req3)
-				if err == nil {
-					for _, req := range req3 {
-						mapvar := make(map[string]any)
-						var modestring = "minpv"
-						switch req.ChargingProfile {
-						case 0:
-							modestring = "now"
-						case 1:
-							modestring = "minpv"
-						}
-						var indentifiers []string
-						indentifiers = append(indentifiers, req.RFIDTag)
-						mapvar["title"] = req.RFIDTag
-						mapvar["template"] = "offline"
-						mapvar["identifiers"] = indentifiers
-						mapvar["mode"] = modestring
-
-						if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config/set"); err != nil {
-							errorTopic := full_topic[:len(full_topic)-3] + "error"
-							m.publish(errorTopic, false, err.Error())
-							//return err
-						}
-
 					}
 				}
 			}
 			return err
 		}},
-		{"/user/default", func(payload string, full_topic string) error {
+		{"/users/set", func(payload string, full_topic string) error {
+			// msg := strings.NewReader(payload)
+			// var req2 map[string]map[string]any
+			var err error
+			//legacy
+			var req3 []Userinfo
+			err = json.Unmarshal([]byte(payload), &req3)
+			if err == nil {
+				for _, req := range req3 {
+					mapvar := make(map[string]any)
+					var modestring = "minpv"
+					switch req.ChargingProfile {
+					case 0:
+						modestring = "now"
+					case 1:
+						modestring = "minpv"
+					}
+					var indentifiers []string
+					indentifiers = append(indentifiers, req.RFIDTag)
+					mapvar["title"] = req.RFIDTag
+					mapvar["template"] = "offline"
+					mapvar["identifiers"] = indentifiers
+					mapvar["mode"] = modestring
+
+					if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config"); err != nil {
+						errorTopic := full_topic + "/error"
+						m.publish(errorTopic, false, err.Error())
+						//return err
+					}
+				}
+			}
+			return err
+		}},
+		{"/users/default", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
+			var modestring = "minpv"
+			switch req["charging_profile"] {
+			case 0:
+				modestring = "now"
+			case 1:
+				modestring = "minpv"
+			}
+			var indentifiers []string
+			indentifiers = append(indentifiers, "default")
 			req["cubos_id"] = "default"
 			req["template"] = "offline"
 			req["title"] = "Standardfahrzeug"
-			req["identifiers"] = "[default]"
-			if err := MQTTConfigHandler(req, site, full_topic+"/set"); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
+			req["identifiers"] = indentifiers
+			if _, found := req["mode"].(string); !found {
+				req["mode"] = modestring
+			}
+			delete(req, "charging_profile")
+
+			if err := MQTTConfigHandler(req, site, full_topic+"/config"); err != nil {
+				errorTopic := full_topic + "/error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}
@@ -287,7 +306,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
-				errorTopic := full_topic[:len(full_topic)-3] + "error"
+				errorTopic := full_topic + "/error"
 				m.publish(errorTopic, false, err.Error())
 				return err
 			}

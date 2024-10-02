@@ -1741,11 +1741,14 @@ func (lp *Loadpoint) GetDataFromLoadpoint() error {
 	if err := lp.syncCharger(); err != nil {
 		lp.log.ERROR.Println(err)
 		lp.publish(keys.Error, err)
-		lp.isUpdated = true
 		return err
 	}
-	lp.isUpdated = true
+
 	return nil
+}
+
+func (lp *Loadpoint) UpdateFinished() {
+	lp.isUpdated = true
 }
 
 func (lp *Loadpoint) IsUpdated() bool {
