@@ -28,7 +28,10 @@ func init() {
 func NewCubosLswFromConfig(other map[string]interface{}) (api.Tariff, error) {
 	cc := struct {
 		embed `mapstructure:",squash"`
-	}{}
+		Host  string
+	}{
+		Host: "http://mqtt.mycubos.com:8080",
+	}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
 		return nil, err
@@ -37,7 +40,7 @@ func NewCubosLswFromConfig(other map[string]interface{}) (api.Tariff, error) {
 	t := &CubosLsw{
 		embed: &cc.embed,
 		log:   util.NewLogger("cuboslsw"),
-		uri:   cuboslsw.URI,
+		uri:   cc.Host + cuboslsw.Path,
 		data:  util.NewMonitor[api.Rates](time.Hour),
 	}
 

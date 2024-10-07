@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const URI = "http://mqtt.mycubos.com:8080/v1/marketdata"
+const Path = "/v1/marketdata"
 
 type Prices struct {
 	Data []PriceInfo
