@@ -611,7 +611,7 @@ func (site *Site) updateAuxMeters() { //TODO Adjust to map[string]interface{}
 			mmm[ref+"/record"] = mm
 			site.publish(keys.Meters, map[string]string{ref + "/status": "online"})
 		} else {
-			site.publish(keys.Meters, map[string]string{ref + "/status": "online"})
+			site.publish(keys.Meters, map[string]string{ref + "/status": "offline"})
 			// delete meterMeasurement from map to not publish incorrect values
 			delete(mmm, ref+"/record")
 		}
