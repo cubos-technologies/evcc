@@ -30,7 +30,7 @@ func NewCubosLswFromConfig(other map[string]interface{}) (api.Tariff, error) {
 		embed `mapstructure:",squash"`
 		Host  string
 	}{
-		Host: "http://mqtt.mycubos.com:8080",
+		Host: "http://mqtt.mycubos.com:7071",
 	}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
