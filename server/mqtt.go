@@ -30,6 +30,14 @@ type Userinfo struct {
 	ChargingProfile int    `json:"charging_profile"`
 }
 
+type mqttUpdated struct {
+	Timestamp int64 `json:"timestamp"`
+}
+
+type mqttVersion struct {
+	Version string `json:"version"`
+}
+
 // NewMQTT creates MQTT server
 func NewMQTT(root string, site site.API, shutdown func(), valueChan chan<- util.Param) (*MQTT, error) {
 	m := &MQTT{
@@ -417,6 +425,9 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 	// alive indicator
 	var updated time.Time
 
+	//  publish version once at startup
+	m.publish(m.root+"/version", true, mqttVersion{Version: FormattedVersion()})
+
 	// publish
 	for p := range in {
 		switch {
@@ -431,7 +442,7 @@ func (m *MQTT) Run(site site.API, in <-chan util.Param) {
 		// alive indicator
 		if time.Since(updated) > time.Second {
 			updated = time.Now()
-			m.publish(fmt.Sprintf("%s/updated", m.root), true, updated.Unix())
+			m.publish(fmt.Sprintf("%s/updated", m.root), true, mqttUpdated{Timestamp: updated.Unix()})
 		}
 
 		// value
