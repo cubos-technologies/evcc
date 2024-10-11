@@ -627,12 +627,12 @@ func configureMqtt(conf *globalconfig.Mqtt) error {
 
 	instance, err := mqtt.RegisteredClient(log, conf.Broker, conf.User, conf.Password, conf.ClientID, 1, conf.Insecure, conf.CaCert, conf.ClientCert, conf.ClientKey, func(options *paho.ClientOptions) {
 		topic := fmt.Sprintf("%s/status", strings.Trim(conf.Topic, "/"))
-		options.SetWill(topic, "offline", 1, true)
+		options.SetWill(topic, "{\"status\":\"offline\"}", 1, true)
 
 		oc := options.OnConnect
 		options.SetOnConnectHandler(func(client paho.Client) {
-			oc(client)                                   // original handler
-			_ = client.Publish(topic, 1, true, "online") // alive - not logged
+			oc(client)                                                    // original handler
+			_ = client.Publish(topic, 1, true, "{\"status\":\"online\"}") // alive - not logged
 		})
 	})
 	if err != nil {
