@@ -90,7 +90,7 @@ func (site *Site) DeleteGridMeter(ref string) {
 	defer site.Unlock()
 
 	delete(site.gridMeter, ref)
-	site.publish(keys.Meters, map[string]string{ref + "/status": "removed"})
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
 }
 
 func (site *Site) AppendPVMeter(meter api.Meter, ref string) {
@@ -105,7 +105,7 @@ func (site *Site) DeletePVMeter(ref string) {
 	defer site.Unlock()
 
 	delete(site.pvMeters, ref)
-	site.publish(keys.Meters, map[string]string{ref + "/status": "removed"})
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
 }
 
 // GetPVMeterRefs returns the PvMeterRef
@@ -152,7 +152,7 @@ func (site *Site) DeleteBatteryMeter(ref string) {
 	defer site.Unlock()
 
 	delete(site.batteryMeters, ref)
-	site.publish(keys.Meters, map[string]string{ref + "/status": "removed"})
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
 }
 
 // GetAuxMeterRefs returns the AuxMeterRef
@@ -183,7 +183,7 @@ func (site *Site) DeleteAuxMeter(ref string) {
 	defer site.Unlock()
 
 	delete(site.auxMeters, ref)
-	site.publish(keys.Meters, map[string]string{ref + "/status": "removed"})
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
 }
 
 func (site *Site) GetExtMeterRefs() []string {
@@ -213,7 +213,7 @@ func (site *Site) DeleteExtMeter(ref string) {
 	defer site.Unlock()
 
 	delete(site.extMeters, ref)
-	site.publish(keys.Meters, map[string]string{ref + "/status": "removed"})
+	site.publish(keys.Meters, map[string]meterStatus{ref + "/status": {Status: "removed"}})
 }
 
 // Loadpoints returns the loadpoints as api interfaces
@@ -264,7 +264,7 @@ func (site *Site) RemoveLoadpoint(ref string) {
 	site.loadpoints = append(site.loadpoints[:index], site.loadpoints[index+1:]...)
 	for !lplock.IsUpdated() {
 	}
-	site.publish(keys.Chargepoints, map[string]string{topic + "/status": "removed"})
+	site.publish(keys.Chargepoints, map[string]meterStatus{topic + "/status": {Status: "removed"}})
 }
 
 // loadpointsAsCircuitDevices returns the loadpoints as circuit devices
