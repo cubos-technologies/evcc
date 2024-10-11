@@ -30,7 +30,7 @@ type Userinfo struct {
 	ChargingProfile int    `json:"charging_profile"`
 }
 
-type MqttError struct {
+type mqttError struct {
 	Error string `json:"error"`
 }
 
@@ -208,7 +208,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic + "/error"
-				m.publish(errorTopic, false, MqttError{Error: err.Error()})
+				m.publish(errorTopic, false, mqttError{Error: err.Error()})
 				return err
 			}
 			return nil
@@ -219,7 +219,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic + "/error"
-				m.publish(errorTopic, false, MqttError{Error: err.Error()})
+				m.publish(errorTopic, false, mqttError{Error: err.Error()})
 				return err
 			}
 			return nil
@@ -232,7 +232,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 				for cubos_id, req := range req2 {
 					if err = MQTTConfigHandler(req, site, full_topic+"/"+cubos_id+"/config"); err != nil {
 						errorTopic := full_topic + "/error"
-						m.publish(errorTopic, false, MqttError{Error: err.Error()})
+						m.publish(errorTopic, false, mqttError{Error: err.Error()})
 						//return err
 					}
 				}
@@ -265,7 +265,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 
 					if err = MQTTConfigHandler(mapvar, site, full_topic[:len(full_topic)-3]+req.RFIDTag+"/config"); err != nil {
 						errorTopic := full_topic + "/error"
-						m.publish(errorTopic, false, MqttError{Error: err.Error()})
+						m.publish(errorTopic, false, mqttError{Error: err.Error()})
 						//return err
 					}
 				}
@@ -296,7 +296,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 
 			if err := MQTTConfigHandler(req, site, full_topic+"/config"); err != nil {
 				errorTopic := full_topic + "/error"
-				m.publish(errorTopic, false, MqttError{Error: err.Error()})
+				m.publish(errorTopic, false, mqttError{Error: err.Error()})
 				return err
 			}
 			return nil
@@ -319,7 +319,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			json.NewDecoder(msg).Decode(&req)
 			if err := MQTTConfigHandler(req, site, full_topic); err != nil {
 				errorTopic := full_topic + "/error"
-				m.publish(errorTopic, false, MqttError{Error: err.Error()})
+				m.publish(errorTopic, false, mqttError{Error: err.Error()})
 				return err
 			}
 			return nil
