@@ -277,7 +277,8 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
 			var modestring = "minpv"
-			switch req["charging_profile"] {
+			charging_profile, _ := req["charging_profile"].(int)
+			switch charging_profile {
 			case 0:
 				modestring = "now"
 			case 1:
