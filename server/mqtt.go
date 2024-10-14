@@ -213,7 +213,7 @@ func (m *MQTT) listenConfig(topic string, site site.API, valueChan chan<- util.P
 			}
 			return nil
 		}},
-		{"/user/+/config", func(payload string, full_topic string) error {
+		{"/users/+/config", func(payload string, full_topic string) error {
 			msg := strings.NewReader(payload)
 			var req map[string]any
 			json.NewDecoder(msg).Decode(&req)
