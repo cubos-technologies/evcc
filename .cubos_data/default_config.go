@@ -12,9 +12,16 @@ import (
 
 func CubosMqttConfig() (globalconfig.Mqtt, error) {
 	log := util.NewLogger("cubos-config")
-	//return CubosMqttLocalConfig(log)
-	//return CubosMqttDevConfig(log)
-	return CubosMqttProdConfig(log)
+
+	mqttConfig, _ := os.LookupEnv("MQTT_CONFIG")
+	switch mqttConfig {
+	case "PROD":
+		return CubosMqttProdConfig(log)
+	case "DEV":
+		return CubosMqttDevConfig(log)
+	default:
+		return CubosMqttLocalConfig(log)
+	}
 }
 
 func CubosMqttProdConfig(log *util.Logger) (globalconfig.Mqtt, error) {
@@ -101,7 +108,7 @@ func CubosMqttDevConfig(log *util.Logger) (globalconfig.Mqtt, error) {
 	}, nil
 }
 
-func CubosMqttLocalConfig(log util.Logger) (globalconfig.Mqtt, error) {
+func CubosMqttLocalConfig(log *util.Logger) (globalconfig.Mqtt, error) {
 	serial := "GW00000000"
 	log.INFO.Printf("using serial %s", serial)
 	return globalconfig.Mqtt{
