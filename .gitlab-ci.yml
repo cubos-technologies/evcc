@@ -11,6 +11,9 @@ variables:
   IMAGE_TAG_HARBOR_REF_NAME: $HARBOR_HOST/$HARBOR_PROJECT:$CI_COMMIT_REF_NAME
   # image tag with :latest for pushing to harbor
   IMAGE_TAG_HARBOR_LATEST:   $HARBOR_HOST/$HARBOR_PROJECT:latest
+
+  # environment variable for setting default mqtt config
+  MQTT_CONFIG: ""
 stages:
   - build
  # - test
@@ -63,10 +66,17 @@ build docker:
     # login to docker registry
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
+    # set mqtt env to prod on master, otherwise dev
+    - |
+      if [ "$CI_COMMIT_REF_NAME" == "master" ]; then
+        export MQTT_CONFIG="PROD"
+      else
+        export MQTT_CONFIG="DEV"
+      fi
     # try to pull docker image for this commit to skip build (allowed to fail). if pulling succeeds, we skip the build -> exit 0.
     - docker pull "$IMAGE_TAG_COMMIT" && exit 0
     # build and push docker image with tag = commit hash
-    - docker build . --pull -t "$IMAGE_TAG_COMMIT" --platform linux/arm/v7
+    - docker build . --pull -t "$IMAGE_TAG_COMMIT" --platform linux/arm/v7 --build-arg MQTT_CONFIG=$MQTT_CONFIG
     - docker push "$IMAGE_TAG_COMMIT"
     - docker logout $CI_REGISTRY
 
