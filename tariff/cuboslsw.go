@@ -74,7 +74,6 @@ func (t *CubosLsw) run(done chan error) {
 			ar := api.Rate{
 				Start: r.StartTimestamp.Local(),
 				End:   r.EndTimestamp.Local(),
-				// TODO: check price divider?
 				Price: t.totalPrice(r.Marketprice / 100),
 			}
 			data = append(data, ar)
