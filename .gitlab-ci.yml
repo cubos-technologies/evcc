@@ -20,15 +20,11 @@ stages:
 # general launch rules
 workflow:
   rules:
-    # if push to master/main
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
-    # if merge request to master/main
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_COMMIT_BRANCH'
-    # if push to dev
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
-    # if merge request to dev
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
-    # if valid tag is pushed
+    # run on every push regardless of branch
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    # if merge request to any branch
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+     # if valid tag is pushed
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)(?:\.\d+)?)?$/'
     # on manual trigger
     - if: '$CI_PIPELINE_SOURCE == "web"'
@@ -151,9 +147,9 @@ deploy to gitlab as latest:
   extends: .deploy docker
   rules:
     # if push to master/main
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     # on manual trigger for master/main
-    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_COMMIT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     # job is not run for any other pipelines.
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
