@@ -196,15 +196,15 @@ func MQTTupdateDeviceHandler(req map[string]any, site site.API, class templates.
 		site.AppendLoadpoint(instance.(*core.Loadpoint))
 
 	case templates.Meter: //battery like meter
-		if res, err := deviceConfig(class, id, config.Meters()); err == nil {
-			if usage, found := res["config"].(map[string]interface{})["usage"].(string); found {
-				MQTTupdateRef(usage, class, config.NameForID(id), true, site)
-				removeMeterfromSite(usage, req["cubos_id"].(string), site)
-			}
-		}
 		var instance any
+		var res map[string]any
+		res, err = deviceConfig(class, id, config.Meters())
 		if err, instance = updateDeviceReturnInstance(id, class, req, meter.NewFromConfig, config.Meters()); err != nil {
 			return err
+		}
+		if usage, found := res["config"].(map[string]interface{})["usage"].(string); found {
+			MQTTupdateRef(usage, class, config.NameForID(id), true, site)
+			removeMeterfromSite(usage, req["cubos_id"].(string), site)
 		}
 		if usage, found := req["usage"].(string); found {
 			MQTTupdateRef(usage, class, config.NameForID(id), false, site)
