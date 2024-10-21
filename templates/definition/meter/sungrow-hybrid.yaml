@@ -138,14 +138,14 @@ render: |
           address: 13026 # Total battery discharge energy, 0.1kWh
           type: input
           decode: uint32s
-        scale: 0.1
+        scale: 10
       - source: modbus
         {{- include "modbus" . | indent 6 }}
         register:
           address: 13040 # Total battery charge energy, 0.1kWh
           type: input
           decode: uint32s
-        scale: -0.1
+        scale: -10
   soc:
     source: modbus
     {{- include "modbus" . | indent 2 }}
