@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	rebootDelay = 15 * time.Minute // delayed reboot on error
+	rebootDelay = 5 * time.Minute // delayed reboot on error
 	serviceDB   = "/var/lib/evcc/evcc.db"
 )
 

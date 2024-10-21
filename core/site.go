@@ -51,19 +51,19 @@ type MeterMeasurement = meterMeasurement
 
 // batteryMeasurement is used as slice element for publishing structured data
 type batteryMeasurement struct {
-	Power          int    `json:"P"`
-	Energy         uint64 `json:"EPos"`
-	EnergyNegative uint64 `json:"ENeg"`
-	Soc            int    `json:"soc"`
-	Capacity       int    `json:"capacity"`
-	Controllable   bool   `json:"controllable"`
-	IL1            int    `json:"IL1"`
-	IL2            int    `json:"IL2"`
-	IL3            int    `json:"IL3"`
-	UL1            int    `json:"UL1"`
-	UL2            int    `json:"UL2"`
-	UL3            int    `json:"UL3"`
-	Timestamp      int64  `json:"timestamp"`
+	Power          int   `json:"P"`
+	Energy         int64 `json:"EPos"`
+	EnergyNegative int64 `json:"ENeg"`
+	Soc            int   `json:"soc"`
+	Capacity       int   `json:"capacity"`
+	Controllable   bool  `json:"controllable"`
+	IL1            int   `json:"IL1"`
+	IL2            int   `json:"IL2"`
+	IL3            int   `json:"IL3"`
+	UL1            int   `json:"UL1"`
+	UL2            int   `json:"UL2"`
+	UL3            int   `json:"UL3"`
+	Timestamp      int64 `json:"timestamp"`
 }
 
 type BatteryMeasurement = batteryMeasurement
@@ -974,8 +974,8 @@ func (site *Site) updateBatteryMeters() error {
 
 		mmm[ref+"/record"] = batteryMeasurement{
 			Power:          int(power),
-			Energy:         uint64(energy * 10),
-			EnergyNegative: uint64(exportEnergy * 10),
+			Energy:         int64(energy * 10),
+			EnergyNegative: int64(exportEnergy * 10),
 			Soc:            int(batSoc),
 			Capacity:       int(capacity),
 			Controllable:   controllable,
