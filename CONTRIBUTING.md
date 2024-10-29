@@ -6,7 +6,7 @@
 
 Developing evcc requires [Go][1] 1.23 and [Node][2] 22. We recommend VSCode with the [Go](https://marketplace.visualstudio.com/items?itemName=golang.Go), [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) and [Vetur](https://marketplace.visualstudio.com/items?itemName=octref.vetur) extensions.
 
-Alternatively the extension [dev-containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) together with [Docker](https://www.docker.com/) can be used. To open your dev-container Press CTRL + Shift + P and type "Open folder in container" and choose the folder of the repository. The recommended extensions are already installed and the container is ready to debug.
+Alternatively the extension [dev-containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) together with [Docker](https://www.docker.com/) can be used. To open your dev-container Press CTRL + Shift + P and type "Open folder in container" and choose the folder of the repository. This will create a devcontainer with the required toolchain and install the prerequisites as explained below. Wait until the startup log says "Done. Press any key to close the terminal." and check for any errors.
 
 We use linters (golangci-lint, Prettier) to keep a coherent source code formatting. It's recommended to use the format-on-save feature of your editor. You can manually reformat your code by running:
 

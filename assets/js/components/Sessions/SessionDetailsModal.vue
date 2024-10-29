@@ -68,10 +68,17 @@
 										{{ $t("sessions.energy") }}
 									</th>
 									<td>
-										{{ fmtKWh(chargedEnergy, chargedEnergy >= 1e3) }}
+										{{
+											fmtWh(
+												chargedEnergy,
+												chargedEnergy >= 1e3
+													? POWER_UNIT.KW
+													: POWER_UNIT.AUTO
+											)
+										}}
 										<div v-if="session.chargeDuration">
 											{{ fmtDurationNs(session.chargeDuration) }}
-											(~{{ fmtKw(avgPower) }})
+											(~{{ fmtW(avgPower) }})
 										</div>
 									</td>
 								</tr>
@@ -81,7 +88,7 @@
 									</th>
 									<td>
 										{{ fmtPercentage(session.solarPercentage, 1) }}
-										({{ fmtKWh(solarEnergy, solarEnergy >= 1e3) }})
+										({{ fmtWh(solarEnergy, POWER_UNIT.AUTO) }})
 									</td>
 								</tr>
 								<tr v-if="session.price != null">
@@ -115,17 +122,17 @@
 										{{ $t("session.meter") }}
 									</th>
 									<td>
-										{{ fmtKWh(session.meterStart * 1e3) }}<br />
-										{{ fmtKWh(session.meterStop * 1e3) }}
+										{{ fmtWh(session.meterStart * 1e3) }}<br />
+										{{ fmtWh(session.meterStop * 1e3) }}
 									</td>
 								</tr>
 							</tbody>
 						</table>
 					</div>
-					<div class="modal-footer d-flex justify-content-right">
+					<div class="modal-footer d-flex justify-content-start">
 						<button
 							type="button"
-							class="btn btn-outline-danger"
+							class="btn btn-link text-danger"
 							data-bs-dismiss="modal"
 							@click="openRemoveConfirmationModal"
 						>
@@ -175,15 +182,14 @@
 
 <script>
 import "@h2d2/shopicons/es/regular/checkmark";
-import { distanceUnit, distanceValue } from "../units";
-import formatter from "../mixins/formatter";
 import Modal from "bootstrap/js/dist/modal";
-import api from "../api";
-
-import VehicleOptions from "./VehicleOptions.vue";
+import formatter from "../../mixins/formatter";
+import VehicleOptions from "../VehicleOptions.vue";
+import { distanceUnit, distanceValue } from "../../units";
+import api from "../../api";
 
 export default {
-	name: "ChargingSessionModal",
+	name: "SessionDetailsModal",
 	components: { VehicleOptions },
 	mixins: [formatter],
 	props: {

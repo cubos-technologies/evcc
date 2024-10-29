@@ -30,7 +30,7 @@
 			</li>
 		</ul>
 
-		<div class="row" v-show="usageTabActive">
+		<div v-show="usageTabActive" class="row">
 			<p class="text-center text-md-start col-md-6 order-md-2 col-lg-3 order-lg-3 pt-lg-2">
 				{{ $t("batterySettings.batteryLevel") }}:
 				<strong>{{ fmtSoc(batterySoc) }}</strong>
@@ -160,7 +160,7 @@
 								@change="changeBufferStart"
 							>
 								<span class="text-decoration-underline">
-									{{ bufferStartOption.name }}
+									{{ selectedBufferStartName }}
 								</span>
 							</CustomSelect>
 						</small>
@@ -224,7 +224,7 @@
 						</i18n-t>
 					</span>
 				</p>
-				<div class="form-check form-switch mt-4" v-if="controllable">
+				<div v-if="controllable" class="form-check form-switch mt-4">
 					<input
 						id="batteryDischargeControl"
 						:checked="batteryDischargeControl"
@@ -256,15 +256,15 @@ import "@h2d2/shopicons/es/regular/home";
 import SmartCostLimit from "./SmartCostLimit.vue";
 import CustomSelect from "./CustomSelect.vue";
 import GenericModal from "./GenericModal.vue";
-import formatter from "../mixins/formatter";
+import formatter, { POWER_UNIT } from "../mixins/formatter";
 import collector from "../mixins/collector";
 import api from "../api";
 import smartCostAvailable from "../utils/smartCostAvailable";
 
 export default {
 	name: "BatterySettingsModal",
-	mixins: [formatter, collector],
 	components: { SmartCostLimit, CustomSelect, GenericModal },
+	mixins: [formatter, collector],
 	props: {
 		bufferSoc: Number,
 		prioritySoc: Number,
@@ -272,7 +272,7 @@ export default {
 		bufferStartSoc: Number,
 		batteryDischargeControl: Boolean,
 		battery: { type: Array, default: () => [] },
-		batteryGridChargeLimit: Number,
+		batteryGridChargeLimit: { type: Number, default: null },
 		smartCostType: String,
 		tariffGrid: Number,
 		currency: String,
@@ -332,19 +332,20 @@ export default {
 			for (let i = 100; i >= this.bufferSoc; i -= 5) {
 				options.push({
 					value: i,
-					name: this.$t(`batterySettings.bufferStart.${i === 100 ? "full" : "above"}`, {
-						soc: this.fmtSoc(i),
-					}),
+					name: this.getBufferStartName(i),
 				});
 			}
 			options.push({
 				value: 0,
-				name: this.$t("batterySettings.bufferStart.never"),
+				name: this.getBufferStartName(0),
 			});
 			return options;
 		},
 		bufferStartOption() {
 			return this.bufferStartOptions.find((option) => this.bufferStartSoc >= option.value);
+		},
+		selectedBufferStartName() {
+			return this.getBufferStartName(this.selectedBufferStartSoc);
 		},
 		topHeight() {
 			return 100 - (this.bufferSoc || 100);
@@ -361,15 +362,15 @@ export default {
 			}
 			return this.battery
 				.filter(({ capacity }) => capacity > 0)
-				.map(({ soc, capacity }) => {
+				.map(({ soc = 0, capacity }) => {
 					const multipleBatteries = this.battery.length > 1;
-					const energy = this.fmtKWh(
+					const energy = this.fmtWh(
 						(capacity / 100) * soc * 1e3,
-						true,
+						POWER_UNIT.KW,
 						!multipleBatteries,
 						1
 					);
-					const total = this.fmtKWh(capacity * 1e3, true, true, 1);
+					const total = this.fmtWh(capacity * 1e3, POWER_UNIT.KW, true, 1);
 					const name = multipleBatteries ? "↳ " : "";
 					const formattedSoc = multipleBatteries ? ` (${this.fmtSoc(soc)})` : "";
 					const formattedEnergy = this.$t("batterySettings.capacity", {
@@ -487,6 +488,11 @@ export default {
 			} catch (err) {
 				console.error(err);
 			}
+		},
+		getBufferStartName(value) {
+			const key = value === 0 ? "never" : value === 100 ? "full" : "above";
+			const soc = this.fmtSoc(value);
+			return this.$t(`batterySettings.bufferStart.${key}`, { soc });
 		},
 	},
 };
